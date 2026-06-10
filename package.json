@@ -9,6 +9,7 @@
   },
   "scripts": {
     "mistri": "node --no-warnings ./bin/mistri.js",
+    "ui": "node --no-warnings ./bin/mistri.js ui",
     "test": "node --no-warnings --test test/*.test.js"
   },
   "engines": {
@@ -16,4 +17,3 @@
   },
   "license": "UNLICENSED"
 }
-

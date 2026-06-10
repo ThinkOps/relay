@@ -326,6 +326,7 @@ Usage:
   mistri move 1 review --role developer
   mistri note 1 "Implemented reset token flow" [--role developer]
   mistri board
+  mistri ui [--port 4173]
 
 Global:
   --actor name
