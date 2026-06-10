@@ -60,6 +60,15 @@ mistri --db /Users/adityachowdhry/work/project-manager/.mistri/mistri.db card sh
 
 When an agent creates a project/card from a target repo, Mistri still captures that repo’s git metadata, but stores the work in the shared control database.
 
+Agents should poll their inbox before starting work and whenever they are waiting for feedback:
+
+```bash
+mistri agent inbox --agent dev-agent --role developer --unread --json
+mistri agent ack 12 --agent dev-agent --role developer
+```
+
+Notifications are created from card events. Admin comments, admin decisions, reviewer/tester send-backs, PM revisions on assigned cards, and `@agent-name` mentions all route back to the relevant agent or role.
+
 Create a scoped card:
 
 ```bash
@@ -218,6 +227,8 @@ npm run mistri -- admin reject 1 --reason "Not a priority"
 npm run mistri -- move 1 review --role developer
 npm run mistri -- note 1 "Implemented reset token flow" --role developer
 npm run mistri -- note 1 $'## Review findings\n- Missing error path\n- Add integration test' --role reviewer
+npm run mistri -- agent inbox --agent dev-agent --role developer --unread
+npm run mistri -- agent ack 12 --agent dev-agent --role developer
 ```
 
 Add `--json` to most commands for agent-readable output.

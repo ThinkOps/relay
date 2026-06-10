@@ -90,6 +90,25 @@ function dispatch(app, env, parsed, area, action, rest) {
     if (action === "list") {
       return app.listOnlineAgents({ windowMs: flags.windowMs });
     }
+
+    if (action === "inbox") {
+      const agent = flags.agent || actor;
+      if (flags.role) app.heartbeat({ agent, role: flags.role });
+      return app.listAgentNotifications({
+        agent,
+        role: flags.role,
+        unread: flags.unread === true,
+      });
+    }
+
+    if (action === "ack") {
+      const agent = flags.agent || actor;
+      if (flags.role) app.heartbeat({ agent, role: flags.role });
+      return app.acknowledgeNotification(one(rest, "Notification id"), {
+        agent,
+        role: flags.role,
+      });
+    }
   }
 
   if (area === "project") {
@@ -272,7 +291,16 @@ function print(value, json) {
   }
 
   if (Array.isArray(value)) {
+    if (value.every(isNotification)) {
+      printNotifications(value);
+      return;
+    }
     printList(value);
+    return;
+  }
+
+  if (isNotification(value)) {
+    printNotification(value);
     return;
   }
 
@@ -330,6 +358,24 @@ function printBoard(board) {
   }
 }
 
+function printNotifications(items) {
+  if (items.length === 0) {
+    console.log("No notifications found.");
+    return;
+  }
+
+  for (const item of items) printNotification(item);
+}
+
+function printNotification(item) {
+  const unread = item.readAt ? "read" : "unread";
+  const target = item.targetAgent || item.targetRole;
+  console.log(
+    `#${item.id} ${unread} -> ${target} card #${item.cardId} ${item.event.action} ${item.card.title} [${item.card.projectName}/${item.card.featureName}]`,
+  );
+  console.log(`${item.event.role}:${item.event.actor} ${item.event.message}`);
+}
+
 function formatObject(value) {
   if (!value || typeof value !== "object") return String(value);
 
@@ -348,6 +394,10 @@ function stripEvents(card) {
 
 function isBoard(value) {
   return CARD_STATUSES.some((status) => Array.isArray(value[status]));
+}
+
+function isNotification(value) {
+  return Boolean(value && value.event && value.card && value.eventId);
 }
 
 function one(values, label) {
@@ -392,6 +442,8 @@ Usage:
   mistri move 1 review --role developer
   mistri note 1 "Implemented reset token flow" [--role developer]
   mistri agent heartbeat --role developer [--agent dev-agent]
+  mistri agent inbox [--agent dev-agent] [--role developer] [--unread]
+  mistri agent ack 1 [--agent dev-agent] [--role developer]
   mistri agent list
   mistri board
   mistri db

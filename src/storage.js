@@ -79,6 +79,21 @@ function migrate(db) {
       role TEXT NOT NULL,
       last_seen TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS notifications (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      event_id INTEGER NOT NULL,
+      card_id INTEGER NOT NULL,
+      target_agent TEXT NOT NULL DEFAULT '',
+      target_role TEXT NOT NULL DEFAULT '',
+      read_at TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE,
+      FOREIGN KEY (card_id) REFERENCES cards(id) ON DELETE CASCADE
+    );
+
+    CREATE UNIQUE INDEX IF NOT EXISTS notifications_unique_target
+      ON notifications(event_id, target_agent, target_role);
   `);
 
   ensureColumn(db, "cards", "user_story", "TEXT NOT NULL DEFAULT ''");
@@ -184,6 +199,33 @@ function mapAgentHeartbeat(row) {
   };
 }
 
+function mapNotification(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    eventId: row.event_id,
+    cardId: row.card_id,
+    targetAgent: row.target_agent,
+    targetRole: row.target_role,
+    readAt: row.read_at,
+    createdAt: row.created_at,
+    event: {
+      action: row.event_action,
+      actor: row.event_actor,
+      createdAt: row.event_created_at,
+      message: row.event_message,
+      role: row.event_role,
+    },
+    card: {
+      id: row.card_id,
+      featureName: row.feature_name,
+      projectName: row.project_name,
+      status: row.card_status,
+      title: row.card_title,
+    },
+  };
+}
+
 function createStore(dbPath) {
   const db = openDatabase(dbPath);
 
@@ -196,6 +238,25 @@ function createStore(dbPath) {
     JOIN projects ON projects.id = cards.project_id
     JOIN features ON features.id = cards.feature_id
     WHERE cards.id = ?
+  `;
+
+  const notificationSql = `
+    SELECT
+      notifications.*,
+      events.action AS event_action,
+      events.actor AS event_actor,
+      events.created_at AS event_created_at,
+      events.message AS event_message,
+      events.role AS event_role,
+      cards.status AS card_status,
+      cards.title AS card_title,
+      projects.name AS project_name,
+      features.name AS feature_name
+    FROM notifications
+    JOIN events ON events.id = notifications.event_id
+    JOIN cards ON cards.id = notifications.card_id
+    JOIN projects ON projects.id = cards.project_id
+    JOIN features ON features.id = cards.feature_id
   `;
 
   function createProject(input) {
@@ -454,6 +515,10 @@ function createStore(dbPath) {
       .map(mapAgentHeartbeat);
   }
 
+  function getAgentHeartbeat(agent) {
+    return mapAgentHeartbeat(db.prepare("SELECT * FROM agent_heartbeats WHERE agent = ?").get(agent));
+  }
+
   function addEvent(input) {
     const result = db
       .prepare(`
@@ -484,22 +549,99 @@ function createStore(dbPath) {
       .map(mapEvent);
   }
 
+  function addNotification(input) {
+    const createdAt = now();
+    db.prepare(`
+      INSERT OR IGNORE INTO notifications (event_id, card_id, target_agent, target_role, created_at)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(input.eventId, input.cardId, input.targetAgent || "", input.targetRole || "", createdAt);
+  }
+
+  function getNotificationById(id) {
+    return mapNotification(db.prepare(`${notificationSql} WHERE notifications.id = ?`).get(id));
+  }
+
+  function listNotifications(input = {}) {
+    const clauses = [];
+    const values = [];
+
+    if (input.agent && input.role) {
+      clauses.push(
+        "(notifications.target_agent = ? OR (notifications.target_agent = '' AND notifications.target_role = ?))",
+      );
+      values.push(input.agent, input.role);
+    } else if (input.agent) {
+      clauses.push("notifications.target_agent = ?");
+      values.push(input.agent);
+    } else if (input.role) {
+      clauses.push("notifications.target_agent = '' AND notifications.target_role = ?");
+      values.push(input.role);
+    }
+
+    if (input.unread) clauses.push("notifications.read_at = ''");
+
+    const where = clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : "";
+
+    return db
+      .prepare(`
+        ${notificationSql}
+        ${where}
+        ORDER BY
+          CASE WHEN notifications.read_at = '' THEN 0 ELSE 1 END,
+          notifications.created_at DESC,
+          notifications.id DESC
+      `)
+      .all(...values)
+      .map(mapNotification);
+  }
+
+  function acknowledgeNotification(input) {
+    const readAt = now();
+    const clauses = ["id = ?"];
+    const values = [input.id];
+
+    if (input.agent && input.role) {
+      clauses.push("(target_agent = ? OR (target_agent = '' AND target_role = ?))");
+      values.push(input.agent, input.role);
+    } else if (input.agent) {
+      clauses.push("target_agent = ?");
+      values.push(input.agent);
+    } else if (input.role) {
+      clauses.push("target_agent = '' AND target_role = ?");
+      values.push(input.role);
+    }
+
+    const result = db.prepare(`
+      UPDATE notifications
+      SET read_at = CASE WHEN read_at = '' THEN ? ELSE read_at END
+      WHERE ${clauses.join(" AND ")}
+    `).run(readAt, ...values);
+
+    if (result.changes === 0) return null;
+    return getNotificationById(input.id);
+  }
+
   function close() {
     db.close();
   }
 
   return {
     addEvent,
+    addNotification,
+    acknowledgeNotification,
     close,
     createCard,
     createFeature,
     createProject,
     getCardById,
+    getAgentHeartbeat,
     getFeatureByName,
+    getNotificationById,
     getProjectByName,
     listCards,
     listEvents,
     listFeatures,
+    listNotifications,
     listOnlineAgents,
     listProjects,
     updateCardLinks,

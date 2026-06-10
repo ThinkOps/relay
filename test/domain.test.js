@@ -226,6 +226,112 @@ test("agent heartbeat marks agents online", () => {
   app.close();
 });
 
+test("admin comments create agent notifications that can be acknowledged", () => {
+  const app = seededApp();
+  const card = app.createCard({
+    project: "Mobile App",
+    feature: "Login Revamp",
+    title: "Implement reset validation",
+    problemStatement: "Validation failures need clear handling.",
+    acceptanceCriteria: "Developer handles invalid reset tokens",
+    definitionOfDone: "Admin sees implementation evidence.",
+    targetRepo: "git@example.com:mobile/app.git",
+    expectedRole: "developer",
+    riskLevel: "medium",
+    actor: "pm-agent",
+    role: "pm",
+  });
+
+  app.submitCard(card.id, { actor: "pm-agent", role: "pm" });
+  app.approveCard(card.id, { actor: "aditya", role: "admin" });
+  app.claimCard(card.id, { actor: "dev-agent", role: "developer", agent: "dev-agent" });
+  app.addNote(card.id, {
+    actor: "aditya",
+    role: "admin",
+    message: "Please include the expired token path.",
+  });
+
+  const inbox = app.listAgentNotifications({ agent: "dev-agent", unread: true });
+  const comment = inbox.find((item) => item.event.action === "card.note");
+
+  assert.equal(comment.targetAgent, "dev-agent");
+  assert.equal(comment.card.title, "Implement reset validation");
+  assert.match(comment.event.message, /expired token/);
+  assert.throws(() => app.acknowledgeNotification(comment.id, { agent: "other-agent" }), /not found/);
+
+  const acknowledged = app.acknowledgeNotification(comment.id, { agent: "dev-agent" });
+  assert.ok(acknowledged.readAt);
+  assert.equal(
+    app.listAgentNotifications({ agent: "dev-agent", unread: true }).some((item) => item.id === comment.id),
+    false,
+  );
+
+  app.close();
+});
+
+test("review send-backs notify the assigned developer", () => {
+  const app = seededApp();
+  const card = app.createCard({
+    project: "Mobile App",
+    feature: "Login Revamp",
+    title: "Review reset implementation",
+    problemStatement: "Code review can require developer follow-up.",
+    acceptanceCriteria: "Reviewer can send work back with findings",
+    definitionOfDone: "Developer sees the send-back notification.",
+    targetRepo: "git@example.com:mobile/app.git",
+    expectedRole: "developer",
+    riskLevel: "medium",
+    actor: "pm-agent",
+    role: "pm",
+  });
+
+  app.submitCard(card.id, { actor: "pm-agent", role: "pm" });
+  app.approveCard(card.id, { actor: "aditya", role: "admin" });
+  app.claimCard(card.id, { actor: "dev-agent", role: "developer", agent: "dev-agent" });
+  app.moveCard(card.id, { actor: "dev-agent", role: "developer", status: "review" });
+  app.moveCard(card.id, { actor: "review-agent", role: "reviewer", status: "in_progress" });
+
+  const inbox = app.listAgentNotifications({ agent: "dev-agent", unread: true });
+  const sendBack = inbox.find(
+    (item) => item.event.action === "card.moved" && item.event.message === "review -> in_progress",
+  );
+
+  assert.equal(sendBack.targetAgent, "dev-agent");
+  assert.equal(sendBack.card.status, "in_progress");
+
+  app.close();
+});
+
+test("mentions notify exact agents", () => {
+  const app = seededApp();
+  const card = app.createCard({
+    project: "Mobile App",
+    feature: "Login Revamp",
+    title: "Coordinate reset QA",
+    problemStatement: "QA needs direct attention.",
+    acceptanceCriteria: "Mentioned agents receive notifications",
+    definitionOfDone: "Mentioned QA agent can see the notification.",
+    targetRepo: "git@example.com:mobile/app.git",
+    expectedRole: "developer",
+    riskLevel: "low",
+    actor: "pm-agent",
+    role: "pm",
+  });
+
+  app.addNote(card.id, {
+    actor: "aditya",
+    role: "admin",
+    message: "@qa-agent please verify the reset copy.",
+  });
+  const inbox = app.listAgentNotifications({ agent: "qa-agent", unread: true });
+
+  assert.equal(inbox.length, 1);
+  assert.equal(inbox[0].targetAgent, "qa-agent");
+  assert.match(inbox[0].event.message, /verify the reset copy/);
+
+  app.close();
+});
+
 test("only admin can mark cards done", () => {
   const app = seededApp();
   const card = app.createCard({

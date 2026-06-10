@@ -228,7 +228,10 @@ function createMistri({ dbPath, cwd = process.cwd() }) {
       assignedAgent: card.assignedAgent,
     });
 
-    event(updated.id, input, "card.moved", `${card.status} -> ${nextStatus}`);
+    event(updated.id, input, "card.moved", `${card.status} -> ${nextStatus}`, {
+      fromStatus: card.status,
+      toStatus: nextStatus,
+    });
     return updated;
   }
 
@@ -325,6 +328,32 @@ function createMistri({ dbPath, cwd = process.cwd() }) {
     return store.listOnlineAgents(cutoffIso);
   }
 
+  function listAgentNotifications(input = {}) {
+    const targetAgent = requiredText(input.agent || input.actor, "Agent");
+    const targetRole = notificationRole(input.role, targetAgent);
+    return store.listNotifications({
+      agent: targetAgent,
+      role: targetRole,
+      unread: Boolean(input.unread),
+    });
+  }
+
+  function acknowledgeNotification(id, input = {}) {
+    const targetAgent = requiredText(input.agent || input.actor, "Agent");
+    const targetRole = notificationRole(input.role, targetAgent);
+    const notification = store.acknowledgeNotification({
+      id: positiveInteger(id, "Notification id"),
+      agent: targetAgent,
+      role: targetRole,
+    });
+
+    if (!notification) {
+      throw new Error(`Notification not found for ${targetAgent}.`);
+    }
+
+    return notification;
+  }
+
   function close() {
     store.close();
   }
@@ -355,7 +384,7 @@ function createMistri({ dbPath, cwd = process.cwd() }) {
   }
 
   function event(cardId, input, action, message, metadata) {
-    return store.addEvent({
+    const storedEvent = store.addEvent({
       cardId,
       actor: actor(input.actor),
       role: role(input.role || "admin"),
@@ -363,10 +392,98 @@ function createMistri({ dbPath, cwd = process.cwd() }) {
       message,
       metadata: metadata || input.metadata || {},
     });
+
+    if (cardId) notifyForEvent(cardId, storedEvent);
+    return storedEvent;
+  }
+
+  function notifyForEvent(cardId, storedEvent) {
+    const card = store.getCardById(cardId);
+    if (!card) return;
+
+    const events = store.listEvents(cardId);
+    for (const target of notificationTargets(card, storedEvent, events)) {
+      store.addNotification({
+        eventId: storedEvent.id,
+        cardId,
+        targetAgent: target.agent,
+        targetRole: target.role,
+      });
+    }
+  }
+
+  function notificationTargets(card, storedEvent, events) {
+    const targets = new Map();
+    const addTarget = ({ agent = "", role: targetRole = "" }) => {
+      const targetAgent = optionalText(agent);
+      const normalizedRole = targetRole ? role(targetRole) : "";
+      if (!targetAgent && !normalizedRole) return;
+      if (targetAgent && targetAgent === storedEvent.actor) return;
+      if (!targetAgent && normalizedRole === storedEvent.role) return;
+      targets.set(`${targetAgent}|${normalizedRole}`, { agent: targetAgent, role: normalizedRole });
+    };
+    const addAssignedTarget = () => {
+      if (card.assignedAgent) {
+        addTarget({ agent: card.assignedAgent, role: card.assignedRole });
+        return;
+      }
+      addTarget({ role: card.expectedRole });
+    };
+    const addPmTarget = () => {
+      const pmAgent = pmAgentFor(events);
+      if (pmAgent) {
+        addTarget({ agent: pmAgent, role: "pm" });
+        return;
+      }
+      addTarget({ role: "pm" });
+    };
+
+    for (const mention of mentionedAgents(storedEvent.message)) addTarget({ agent: mention });
+
+    if (storedEvent.action === "card.note") {
+      if (storedEvent.role === "admin") {
+        if (card.assignedAgent) addAssignedTarget();
+        else addPmTarget();
+      } else if (["pm", "reviewer", "tester"].includes(storedEvent.role) && card.assignedAgent) {
+        addAssignedTarget();
+      }
+    }
+
+    if (["admin.needs_changes", "admin.rejected"].includes(storedEvent.action)) addPmTarget();
+    if (["admin.approved", "admin.paused", "admin.cancelled", "admin.done"].includes(storedEvent.action)) {
+      addAssignedTarget();
+    }
+
+    if (storedEvent.action === "card.moved") {
+      const fromStatus = storedEvent.metadata.fromStatus;
+      const toStatus = storedEvent.metadata.toStatus;
+      if (toStatus === "review") addTarget({ role: "reviewer" });
+      if (toStatus === "testing") addTarget({ role: "tester" });
+      if (toStatus === "in_progress" && ["review", "testing"].includes(fromStatus)) addAssignedTarget();
+    }
+
+    if (["card.revised", "card.submitted"].includes(storedEvent.action) && card.assignedAgent) {
+      addAssignedTarget();
+    }
+
+    return Array.from(targets.values());
+  }
+
+  function notificationRole(inputRole, targetAgent) {
+    if (inputRole) return role(inputRole);
+    return store.getAgentHeartbeat(targetAgent)?.role || "";
+  }
+
+  function pmAgentFor(events) {
+    const pmEvent = events.find(
+      (item) => item.role === "pm" && ["card.created", "card.submitted", "card.revised"].includes(item.action),
+    );
+    return pmEvent?.actor || "";
   }
 
   return {
     addNote,
+    acknowledgeNotification,
     approveCard,
     board,
     cancelCard,
@@ -379,6 +496,7 @@ function createMistri({ dbPath, cwd = process.cwd() }) {
     getCard,
     heartbeat,
     linkCard,
+    listAgentNotifications,
     listCards,
     listFeatures: store.listFeatures,
     listOnlineAgents,
@@ -463,6 +581,18 @@ function onlineWindowMs(value) {
     throw new Error("Online window must be between 1000ms and 86400000ms.");
   }
   return number;
+}
+
+function positiveInteger(value, label) {
+  const number = Number.parseInt(String(value), 10);
+  if (!Number.isInteger(number) || number < 1 || String(number) !== String(value)) {
+    throw new Error(`${label} must be a positive integer.`);
+  }
+  return number;
+}
+
+function mentionedAgents(value) {
+  return Array.from(String(value || "").matchAll(/@([A-Za-z0-9][A-Za-z0-9._-]{0,63})/g), (match) => match[1]);
 }
 
 function valueOrCurrent(value, current, normalize) {
