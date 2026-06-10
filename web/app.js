@@ -755,7 +755,7 @@ function notePlaceholder(status) {
 
 function markdownBlock(value, extraClass = "") {
   const root = el("div", `markdown ${extraClass}`.trim());
-  const text = String(value || "").trim();
+  const text = markdownText(value);
   if (!text) {
     root.append(el("p", "", "None"));
     return root;
@@ -875,8 +875,15 @@ function appendInline(parent, text) {
   if (cursor < text.length) parent.append(document.createTextNode(text.slice(cursor)));
 }
 
-function plainPreview(value) {
+function markdownText(value) {
   return String(value || "")
+    .replace(/\\n/g, "\n")
+    .replace(/\\t/g, "\t")
+    .trim();
+}
+
+function plainPreview(value) {
+  return markdownText(value)
     .replace(/```[\s\S]*?```/g, "code block")
     .replace(/^#{1,4}\s+/gm, "")
     .replace(/^\s*[-*]\s+/gm, "")

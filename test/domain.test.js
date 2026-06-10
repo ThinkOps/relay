@@ -99,6 +99,34 @@ test("admin can request changes with an event trail", () => {
   app.close();
 });
 
+test("agent notes normalize escaped markdown line breaks", () => {
+  const app = seededApp();
+  const card = app.createCard({
+    project: "Mobile App",
+    feature: "Login Revamp",
+    title: "Report review findings",
+    problemStatement: "Review notes need readable Markdown.",
+    acceptanceCriteria: "Timeline renders headings and bullets",
+    definitionOfDone: "Admin can read the agent update.",
+    targetRepo: "git@example.com:mobile/app.git",
+    expectedRole: "reviewer",
+    riskLevel: "low",
+    actor: "pm-agent",
+    role: "pm",
+  });
+
+  app.addNote(card.id, {
+    actor: "review-agent",
+    role: "reviewer",
+    message: "## Findings\\n- Missing error path\\n- Add integration test",
+  });
+  const detail = app.getCard(card.id);
+
+  assert.equal(detail.events.at(-1).message, "## Findings\n- Missing error path\n- Add integration test");
+
+  app.close();
+});
+
 test("pm can revise a needs-changes card and resubmit it", () => {
   const app = seededApp();
   const card = app.createCard({

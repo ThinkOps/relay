@@ -213,9 +213,12 @@ npm run mistri -- admin changes 1 --reason "Acceptance criteria are too vague"
 npm run mistri -- admin reject 1 --reason "Not a priority"
 npm run mistri -- move 1 review --role developer
 npm run mistri -- note 1 "Implemented reset token flow" --role developer
+npm run mistri -- note 1 $'## Review findings\n- Missing error path\n- Add integration test' --role reviewer
 ```
 
 Add `--json` to most commands for agent-readable output.
+
+Notes support Markdown. Agents can pass real multiline strings, or literal `\n` sequences when that is easier from their shell/runtime.
 
 Use `MISTRI_DB` or `--db` whenever a command is run outside the control workspace.
 

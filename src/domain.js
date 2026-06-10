@@ -277,7 +277,7 @@ function createMistri({ dbPath, cwd = process.cwd() }) {
 
   function addNote(id, input = {}) {
     const card = requireCard(id);
-    return event(card.id, input, "card.note", requiredText(input.message, "Note"));
+    return event(card.id, input, "card.note", noteText(input.message));
   }
 
   function linkCard(id, input = {}) {
@@ -397,6 +397,10 @@ function requiredText(value, label) {
   if (!text) throw new Error(`${label} is required.`);
   if (text.length > 5000) throw new Error(`${label} is too long.`);
   return text;
+}
+
+function noteText(value) {
+  return requiredText(value, "Note").replace(/\\n/g, "\n").replace(/\\t/g, "\t");
 }
 
 function optionalText(value) {
