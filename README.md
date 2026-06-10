@@ -6,7 +6,7 @@ The first version is intentionally small:
 
 - CLI-first workflow
 - Local web board UI
-- SQLite database at `.mistri/mistri.db`
+- SQLite database at `.mistri/mistri.db`, with `MISTRI_DB` support for a shared control database
 - Required acceptance criteria before a card can be submitted
 - Agile-inspired card fields: user story, story points, sprint label, acceptance criteria, definition of done
 - WIP limits surfaced on the board for ready, in-progress, review, and QA
@@ -31,6 +31,33 @@ npm run mistri -- init
 npm run mistri -- project create "Mistri"
 npm run mistri -- feature create "Agent Work Control" --project "Mistri"
 ```
+
+## Shared Agent Setup
+
+Mistri should have one control database for the admin board. Do not let each agent initialize its own database inside its own repo unless you are only doing a local experiment.
+
+Create the control database once:
+
+```bash
+cd /Users/adityachowdhry/work/project-manager
+mistri init
+mistri db
+```
+
+Agents working from other repositories should point at that same database:
+
+```bash
+export MISTRI_DB=/Users/adityachowdhry/work/project-manager/.mistri/mistri.db
+mistri db
+```
+
+For one command:
+
+```bash
+mistri --db /Users/adityachowdhry/work/project-manager/.mistri/mistri.db card show 1 --json
+```
+
+When an agent creates a project/card from a target repo, Mistri still captures that repo’s git metadata, but stores the work in the shared control database.
 
 Create a scoped card:
 
@@ -150,6 +177,7 @@ npm run mistri -- project list
 npm run mistri -- feature list --project "Mistri"
 npm run mistri -- card list
 npm run mistri -- card show 1
+npm run mistri -- db
 npm run mistri -- admin changes 1 --reason "Acceptance criteria are too vague"
 npm run mistri -- admin reject 1 --reason "Not a priority"
 npm run mistri -- move 1 review --role developer
@@ -157,6 +185,8 @@ npm run mistri -- note 1 "Implemented reset token flow" --role developer
 ```
 
 Add `--json` to most commands for agent-readable output.
+
+Use `MISTRI_DB` or `--db` whenever a command is run outside the control workspace.
 
 ## Security Notes
 

@@ -13,8 +13,10 @@ async function runCli(argv = process.argv.slice(2), env = process.env, cwd = pro
     return;
   }
 
+  const selectedDb = parsed.flags.db || env.MISTRI_DB;
+
   if (area === "init") {
-    const workspace = workspaceForInit(cwd);
+    const workspace = workspaceForInit(cwd, selectedDb);
     fs.mkdirSync(workspace.mistriDir, { recursive: true });
     const app = createMistri({ dbPath: workspace.dbPath, cwd });
     app.close();
@@ -22,7 +24,12 @@ async function runCli(argv = process.argv.slice(2), env = process.env, cwd = pro
     return;
   }
 
-  const workspace = requireWorkspace(cwd);
+  const workspace = requireWorkspace(cwd, selectedDb);
+
+  if (area === "db") {
+    print(workspace, parsed.flags.json);
+    return;
+  }
 
   if (area === "ui") {
     const app = await startServer({
@@ -333,11 +340,16 @@ Usage:
   mistri move 1 review --role developer
   mistri note 1 "Implemented reset token flow" [--role developer]
   mistri board
+  mistri db
   mistri ui [--port 4173]
 
 Global:
   --actor name
+  --db path
   --json
+
+Environment:
+  MISTRI_DB=/path/to/.mistri/mistri.db
 `);
 }
 

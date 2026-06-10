@@ -4,7 +4,21 @@ const path = require("node:path");
 const MISTRI_DIR = ".mistri";
 const DB_FILE = "mistri.db";
 
-function findWorkspace(startDir = process.cwd()) {
+function workspaceFromDbPath(dbPath) {
+  const resolved = path.resolve(dbPath);
+  return {
+    root: path.dirname(path.dirname(resolved)),
+    mistriDir: path.dirname(resolved),
+    dbPath: resolved,
+  };
+}
+
+function findWorkspace(startDir = process.cwd(), dbPath) {
+  if (dbPath) {
+    const workspace = workspaceFromDbPath(dbPath);
+    return fs.existsSync(workspace.dbPath) ? workspace : null;
+  }
+
   let current = path.resolve(startDir);
 
   while (true) {
@@ -25,7 +39,9 @@ function findWorkspace(startDir = process.cwd()) {
   }
 }
 
-function workspaceForInit(cwd = process.cwd()) {
+function workspaceForInit(cwd = process.cwd(), dbPath) {
+  if (dbPath) return workspaceFromDbPath(dbPath);
+
   const root = path.resolve(cwd);
   return {
     root,
@@ -34,9 +50,12 @@ function workspaceForInit(cwd = process.cwd()) {
   };
 }
 
-function requireWorkspace(cwd = process.cwd()) {
-  const workspace = findWorkspace(cwd);
+function requireWorkspace(cwd = process.cwd(), dbPath) {
+  const workspace = findWorkspace(cwd, dbPath);
   if (!workspace) {
+    if (dbPath) {
+      throw new Error(`Mistri database not found at ${path.resolve(dbPath)}. Run \`mistri init --db ${path.resolve(dbPath)}\` first.`);
+    }
     throw new Error("No Mistri workspace found. Run `mistri init` first.");
   }
   return workspace;
@@ -47,6 +66,6 @@ module.exports = {
   DB_FILE,
   findWorkspace,
   requireWorkspace,
+  workspaceFromDbPath,
   workspaceForInit,
 };
-
