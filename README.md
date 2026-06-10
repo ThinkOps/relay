@@ -10,6 +10,7 @@ The first version is intentionally small:
 - Required acceptance criteria before a card can be submitted
 - Agile-inspired card fields: user story, story points, sprint label, acceptance criteria, definition of done
 - WIP limits surfaced on the board for ready, in-progress, review, and QA
+- Project and feature side navigation for filtered kanban boards
 - Append-only event trail for card activity
 - Git repo metadata captured when cards are created
 
@@ -68,6 +69,22 @@ By default the UI binds to `127.0.0.1:4173`. Use `-- --port 4180` to choose anot
 
 ```bash
 npm run ui -- --port 4180
+```
+
+The UI has a left panel for context switching:
+
+- `All Work`: every project and feature
+- `Needs Approval`: cards waiting for admin approval
+- project links: one kanban board for that project
+- feature links: one kanban board for that feature
+
+The filters are URL-based:
+
+```text
+/                 all work
+/?view=approvals  approval queue
+/?project=1       project board
+/?feature=3       feature board
 ```
 
 ## Workflow

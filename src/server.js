@@ -69,7 +69,12 @@ async function handleApi({ request, response, url, dbPath, cwd, token }) {
     const parts = url.pathname.split("/").filter(Boolean);
 
     if (request.method === "GET" && url.pathname === "/api/board") {
-      sendJson(response, 200, app.board());
+      sendJson(response, 200, app.board(boardFilters(url)));
+      return;
+    }
+
+    if (request.method === "GET" && url.pathname === "/api/navigation") {
+      sendJson(response, 200, navigation(app));
       return;
     }
 
@@ -134,6 +139,58 @@ async function handleApi({ request, response, url, dbPath, cwd, token }) {
   } finally {
     app.close();
   }
+}
+
+function boardFilters(url) {
+  const view = url.searchParams.get("view");
+  const projectId = positiveInteger(url.searchParams.get("project"), "project");
+  const featureId = positiveInteger(url.searchParams.get("feature"), "feature");
+  const filters = {};
+
+  if (projectId) filters.projectId = projectId;
+  if (featureId) filters.featureId = featureId;
+  if (view === "approvals") filters.approvalStatus = "pending";
+  if (view && view !== "approvals") throw new Error("Unknown board view.");
+
+  return filters;
+}
+
+function navigation(app) {
+  const allCards = app.listCards();
+  const projects = app.listProjects().map((project) => {
+    const features = app.listFeatures(project.id).map((feature) => ({
+      ...feature,
+      counts: counts(allCards.filter((card) => card.featureId === feature.id)),
+    }));
+
+    return {
+      ...project,
+      counts: counts(allCards.filter((card) => card.projectId === project.id)),
+      features,
+    };
+  });
+
+  return {
+    counts: counts(allCards),
+    projects,
+  };
+}
+
+function counts(cards) {
+  return {
+    active: cards.filter((card) => ["in_progress", "review", "testing"].includes(card.status)).length,
+    pending: cards.filter((card) => card.approvalStatus === "pending").length,
+    total: cards.length,
+  };
+}
+
+function positiveInteger(value, label) {
+  if (!value) return null;
+  const number = Number.parseInt(value, 10);
+  if (!Number.isInteger(number) || number < 1 || String(number) !== value) {
+    throw new Error(`${label} must be a positive integer.`);
+  }
+  return number;
 }
 
 function listen(server, host, port) {

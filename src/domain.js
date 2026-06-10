@@ -258,8 +258,8 @@ function createMistri({ dbPath, cwd = process.cwd() }) {
     return store.listCards(filters);
   }
 
-  function board() {
-    const cards = listCards();
+  function board(filters = {}) {
+    const cards = listCards(filters);
     return CARD_STATUSES.reduce((groups, status) => {
       groups[status] = cards.filter((card) => card.status === status);
       return groups;

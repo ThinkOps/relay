@@ -313,6 +313,11 @@ function createStore(dbPath) {
       values.push(filters.projectId);
     }
 
+    if (filters.featureId) {
+      clauses.push("cards.feature_id = ?");
+      values.push(filters.featureId);
+    }
+
     const where = clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : "";
 
     return db

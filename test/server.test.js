@@ -16,6 +16,9 @@ test("server exposes board data and protects mutations with token", async () => 
   const app = createMistri({ dbPath, cwd: process.cwd() });
   app.createProject({ name: "Mistri", actor: "admin", role: "admin" });
   app.createFeature({ project: "Mistri", name: "Admin Gate", actor: "pm", role: "pm" });
+  app.createFeature({ project: "Mistri", name: "Board Views", actor: "pm", role: "pm" });
+  app.createProject({ name: "Mobile App", actor: "admin", role: "admin" });
+  app.createFeature({ project: "Mobile App", name: "Login", actor: "pm", role: "pm" });
   const card = app.createCard({
     project: "Mistri",
     feature: "Admin Gate",
@@ -31,6 +34,19 @@ test("server exposes board data and protects mutations with token", async () => 
     actor: "pm",
     role: "pm",
   });
+  app.createCard({
+    project: "Mobile App",
+    feature: "Login",
+    title: "Keep mobile work separate",
+    problemStatement: "Project filters should not leak unrelated cards.",
+    acceptanceCriteria: "Mistri board excludes mobile cards",
+    definitionOfDone: "Project filter returns only matching project cards.",
+    targetRepo: "local",
+    expectedRole: "developer",
+    riskLevel: "low",
+    actor: "pm",
+    role: "pm",
+  });
   app.submitCard(card.id, { actor: "pm", role: "pm" });
   app.close();
 
@@ -41,6 +57,28 @@ test("server exposes board data and protects mutations with token", async () => 
     assert.equal(board.pending_approval.length, 1);
     assert.equal(board.pending_approval[0].storyPoints, 3);
     assert.equal(board.pending_approval[0].sprint, "Sprint 2");
+
+    const navigationResponse = await fetch(`${server.url}/api/navigation`);
+    const navigation = await navigationResponse.json();
+    const mistri = navigation.projects.find((project) => project.name === "Mistri");
+    const adminGate = mistri.features.find((feature) => feature.name === "Admin Gate");
+    assert.equal(navigation.counts.total, 2);
+    assert.equal(mistri.counts.total, 1);
+    assert.equal(adminGate.counts.pending, 1);
+
+    const projectBoardResponse = await fetch(`${server.url}/api/board?project=${mistri.id}`);
+    const projectBoard = await projectBoardResponse.json();
+    assert.equal(projectBoard.pending_approval.length, 1);
+    assert.equal(projectBoard.draft.length, 0);
+
+    const featureBoardResponse = await fetch(`${server.url}/api/board?feature=${adminGate.id}`);
+    const featureBoard = await featureBoardResponse.json();
+    assert.equal(featureBoard.pending_approval[0].featureName, "Admin Gate");
+
+    const approvalsResponse = await fetch(`${server.url}/api/board?view=approvals`);
+    const approvals = await approvalsResponse.json();
+    assert.equal(approvals.pending_approval.length, 1);
+    assert.equal(approvals.draft.length, 0);
 
     const blocked = await fetch(`${server.url}/api/admin/approve/${card.id}`, {
       method: "POST",

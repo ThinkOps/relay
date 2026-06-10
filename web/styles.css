@@ -1,10 +1,10 @@
 :root {
   color-scheme: light;
-  --bg: #f6f3ed;
-  --surface: #fffdf8;
+  --bg: #f4f6f5;
+  --surface: #ffffff;
   --ink: #1f2523;
   --muted: #65706b;
-  --line: #d9d2c4;
+  --line: #d5dbd8;
   --accent: #236b5e;
   --accent-dark: #15483f;
   --warn: #a15c10;
@@ -83,7 +83,106 @@ h3 {
 main {
   display: grid;
   gap: 20px;
-  padding: 20px 24px 28px;
+  min-width: 0;
+  padding: 20px 24px 28px 0;
+}
+
+.app-shell {
+  display: grid;
+  gap: 20px;
+  grid-template-columns: 280px minmax(0, 1fr);
+}
+
+.sidebar {
+  align-self: start;
+  border-right: 1px solid var(--line);
+  min-height: calc(100vh - 76px);
+  padding: 20px 0 28px 24px;
+  position: sticky;
+  top: 77px;
+}
+
+.sidebar-heading {
+  padding: 0 16px 10px 0;
+}
+
+.nav-list {
+  display: grid;
+  gap: 6px;
+  padding-right: 12px;
+}
+
+.nav-group {
+  display: grid;
+  gap: 4px;
+}
+
+.feature-list {
+  display: grid;
+  gap: 3px;
+  padding-left: 14px;
+}
+
+.nav-link {
+  align-items: center;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: var(--ink);
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+  min-height: 38px;
+  padding: 8px 9px;
+  text-decoration: none;
+}
+
+.nav-link:hover {
+  background: rgba(35, 107, 94, 0.06);
+}
+
+.nav-link.active {
+  background: var(--ready);
+  border-color: rgba(35, 107, 94, 0.22);
+}
+
+.feature-link {
+  color: var(--muted);
+  min-height: 32px;
+  padding: 6px 8px;
+}
+
+.nav-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nav-badges {
+  display: inline-flex;
+  flex: 0 0 auto;
+  gap: 4px;
+}
+
+.badge {
+  background: rgba(31, 37, 35, 0.07);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1;
+  min-width: 20px;
+  padding: 4px 6px;
+  text-align: center;
+}
+
+.badge.pending {
+  background: #fff7e8;
+  color: var(--warn);
+}
+
+.badge.active {
+  background: #edf0fa;
+  color: #40528a;
 }
 
 .band,
@@ -336,6 +435,37 @@ main {
 @media (max-width: 720px) {
   .topbar {
     padding: 14px 16px;
+  }
+
+  .app-shell {
+    display: block;
+  }
+
+  .sidebar {
+    border-bottom: 1px solid var(--line);
+    border-right: 0;
+    min-height: 0;
+    overflow-x: auto;
+    padding: 12px 16px;
+    position: static;
+  }
+
+  .sidebar-heading {
+    display: none;
+  }
+
+  .nav-list,
+  .nav-group,
+  .feature-list {
+    align-items: center;
+    display: flex;
+    gap: 8px;
+    padding: 0;
+  }
+
+  .nav-link {
+    flex: 0 0 auto;
+    max-width: 240px;
   }
 
   main {

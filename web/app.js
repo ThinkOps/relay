@@ -33,21 +33,35 @@ const WIP_LIMITS = {
 
 const state = {
   board: {},
+  navigation: null,
 };
 
 document.addEventListener("DOMContentLoaded", () => {
-  document.getElementById("refreshButton").addEventListener("click", loadBoard);
+  document.getElementById("refreshButton").addEventListener("click", loadApp);
   document.getElementById("closeDrawer").addEventListener("click", closeDrawer);
   document.getElementById("drawer").addEventListener("click", (event) => {
     if (event.target.id === "drawer") closeDrawer();
   });
-  loadBoard();
+  window.addEventListener("popstate", loadApp);
+  loadApp();
 });
 
-async function loadBoard() {
-  const board = await request("/api/board");
+async function loadApp() {
+  const [navigation, board] = await Promise.all([request("/api/navigation"), request(boardPath())]);
+  state.navigation = navigation;
   state.board = board;
+  renderNavigation(navigation);
   render(board);
+}
+
+function boardPath() {
+  const filter = currentFilter();
+  const params = new URLSearchParams();
+  if (filter.view) params.set("view", filter.view);
+  if (filter.project) params.set("project", filter.project);
+  if (filter.feature) params.set("feature", filter.feature);
+  const query = params.toString();
+  return query ? `/api/board?${query}` : "/api/board";
 }
 
 function render(board) {
@@ -56,14 +70,48 @@ function render(board) {
   const active = ["in_progress", "review", "testing"].flatMap((status) => board[status] || []);
   const activePoints = active.reduce((total, card) => total + (card.storyPoints || 0), 0);
 
-  document.getElementById("summary").textContent = `${pending.length} pending approval · ${active.length} active · ${activePoints} active points · ${cards.length} total`;
+  document.getElementById("summary").textContent = `${contextTitle()} · ${pending.length} pending approval · ${active.length} active · ${activePoints} active points · ${cards.length} total`;
   document.getElementById("approvalCount").textContent = pending.length;
   document.getElementById("activeCount").textContent = active.length;
   document.getElementById("cardCount").textContent = cards.length;
+  document.getElementById("boardTitle").textContent = contextTitle();
 
   renderApprovalQueue(pending);
   renderActiveWork(active);
   renderBoard(board);
+}
+
+function renderNavigation(navigation) {
+  const root = document.getElementById("projectNav");
+  const filter = currentFilter();
+  root.replaceChildren();
+
+  root.append(
+    navLink("All Work", navigation.counts, "/", !filter.view && !filter.project && !filter.feature),
+    navLink("Needs Approval", { total: navigation.counts.pending }, "/?view=approvals", filter.view === "approvals"),
+  );
+
+  if (navigation.projects.length === 0) {
+    root.append(empty("No projects yet."));
+    return;
+  }
+
+  for (const project of navigation.projects) {
+    const projectActive = filter.project === String(project.id);
+    const projectNode = el("div", "nav-group");
+    projectNode.append(
+      navLink(project.name, project.counts, `/?project=${project.id}`, projectActive),
+    );
+
+    const featureList = el("div", "feature-list");
+    for (const feature of project.features) {
+      featureList.append(
+        navLink(feature.name, feature.counts, `/?feature=${feature.id}`, filter.feature === String(feature.id), "feature-link"),
+      );
+    }
+    projectNode.append(featureList);
+    root.append(projectNode);
+  }
 }
 
 function renderApprovalQueue(cards) {
@@ -199,7 +247,7 @@ async function adminAction(action, id, body = {}) {
     method: "POST",
     body: JSON.stringify({ actor: "admin", ...body }),
   });
-  await loadBoard();
+  await loadApp();
 }
 
 async function request(path, options = {}) {
@@ -248,6 +296,24 @@ function meta(items) {
   return node;
 }
 
+function navLink(text, counts, href, active, extraClass = "") {
+  const node = el("a", `nav-link ${extraClass}${active ? " active" : ""}`.trim());
+  node.href = href;
+  node.addEventListener("click", (event) => {
+    event.preventDefault();
+    window.history.pushState({}, "", href);
+    loadApp();
+  });
+
+  node.append(el("span", "nav-label", text));
+  const badges = el("span", "nav-badges");
+  if (counts.pending) badges.append(el("span", "badge pending", String(counts.pending)));
+  if (counts.active) badges.append(el("span", "badge active", String(counts.active)));
+  badges.append(el("span", "badge", String(counts.total || 0)));
+  node.append(badges);
+  return node;
+}
+
 function button(text, className, onClick) {
   const node = el("button", className, text);
   node.type = "button";
@@ -271,4 +337,33 @@ function el(tag, className = "", text = "") {
 
 function label(value) {
   return STATUS_LABELS[value] || String(value).replaceAll("_", " ");
+}
+
+function currentFilter() {
+  const params = new URLSearchParams(window.location.search);
+  return {
+    feature: params.get("feature"),
+    project: params.get("project"),
+    view: params.get("view"),
+  };
+}
+
+function contextTitle() {
+  const filter = currentFilter();
+  if (filter.view === "approvals") return "Needs Approval";
+  if (!state.navigation) return "Board";
+
+  if (filter.feature) {
+    for (const project of state.navigation.projects) {
+      const feature = project.features.find((item) => String(item.id) === filter.feature);
+      if (feature) return `${project.name} / ${feature.name}`;
+    }
+  }
+
+  if (filter.project) {
+    const project = state.navigation.projects.find((item) => String(item.id) === filter.project);
+    if (project) return project.name;
+  }
+
+  return "All Work";
 }
