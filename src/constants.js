@@ -4,12 +4,12 @@ const CARD_STATUSES = [
   "draft",
   "pending_approval",
   "needs_changes",
-  "rejected",
   "ready",
   "in_progress",
   "review",
   "testing",
   "done",
+  "rejected",
   "paused",
   "cancelled",
 ];

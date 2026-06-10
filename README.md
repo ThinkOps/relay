@@ -10,6 +10,7 @@ The first version is intentionally small:
 - Required acceptance criteria before a card can be submitted
 - Agile-inspired card fields: user story, story points, sprint label, acceptance criteria, definition of done
 - WIP limits surfaced on the board for ready, in-progress, review, and QA
+- Agent presence: recent CLI activity/heartbeats show who is online
 - Project and feature side navigation for filtered kanban boards
 - Append-only event trail for card activity
 - Git repo metadata captured when cards are created
@@ -83,6 +84,7 @@ Submit and approve it:
 npm run mistri -- card submit 1 --actor pm-agent
 npm run mistri -- admin approve 1 --actor aditya
 npm run mistri -- claim 1 --role developer --agent dev-agent
+npm run mistri -- agent list
 npm run mistri -- board
 ```
 
@@ -125,6 +127,17 @@ The filters are URL-based:
 /?project=1       project board
 /?feature=3       feature board
 ```
+
+The top summary shows how many agents are online. Agents are considered online when they have recent CLI activity or send an explicit heartbeat:
+
+```bash
+npm run mistri -- agent heartbeat --role developer --agent dev-agent
+npm run mistri -- agent list --json
+```
+
+Cards show a small ownership tag. Claimed cards show `agent: name`; unclaimed cards show the expected role needed for the work.
+
+Card updates and long scope fields in the UI support a safe Markdown subset: headings, paragraphs, bullet and numbered lists, blockquotes, fenced code blocks, inline code, bold, and italics. The renderer builds DOM text nodes instead of raw HTML.
 
 ## Workflow
 
@@ -191,6 +204,8 @@ npm run mistri -- card list
 npm run mistri -- card show 1
 npm run mistri -- db
 npm run mistri -- card revise 1 --ac "Updated criterion" --note "Addressed admin feedback" --submit
+npm run mistri -- agent heartbeat --role developer --agent dev-agent
+npm run mistri -- agent list
 npm run mistri -- admin changes 1 --reason "Acceptance criteria are too vague"
 npm run mistri -- admin reject 1 --reason "Not a priority"
 npm run mistri -- move 1 review --role developer

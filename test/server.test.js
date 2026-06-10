@@ -48,6 +48,7 @@ test("server exposes board data and protects mutations with token", async () => 
     role: "pm",
   });
   app.submitCard(card.id, { actor: "pm", role: "pm" });
+  app.heartbeat({ agent: "dev-agent", role: "developer" });
   app.close();
 
   const server = await startServer({ dbPath, cwd: process.cwd(), port: 0 });
@@ -57,12 +58,15 @@ test("server exposes board data and protects mutations with token", async () => 
     assert.equal(board.pending_approval.length, 1);
     assert.equal(board.pending_approval[0].storyPoints, 3);
     assert.equal(board.pending_approval[0].sprint, "Sprint 2");
+    assert.equal(board.pending_approval[0].events.at(-1).action, "card.submitted");
 
     const navigationResponse = await fetch(`${server.url}/api/navigation`);
     const navigation = await navigationResponse.json();
     const mistri = navigation.projects.find((project) => project.name === "Mistri");
     const adminGate = mistri.features.find((feature) => feature.name === "Admin Gate");
     assert.equal(navigation.counts.total, 2);
+    assert.equal(navigation.onlineAgents.length, 1);
+    assert.equal(navigation.onlineAgents[0].agent, "dev-agent");
     assert.equal(mistri.counts.total, 1);
     assert.equal(adminGate.counts.pending, 1);
 

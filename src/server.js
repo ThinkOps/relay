@@ -69,7 +69,7 @@ async function handleApi({ request, response, url, dbPath, cwd, token }) {
     const parts = url.pathname.split("/").filter(Boolean);
 
     if (request.method === "GET" && url.pathname === "/api/board") {
-      sendJson(response, 200, app.board(boardFilters(url)));
+      sendJson(response, 200, boardWithEvents(app.board(boardFilters(url)), app));
       return;
     }
 
@@ -155,6 +155,18 @@ function boardFilters(url) {
   return filters;
 }
 
+function boardWithEvents(board, app) {
+  return Object.fromEntries(
+    Object.entries(board).map(([status, cards]) => [
+      status,
+      cards.map((card) => ({
+        ...card,
+        events: app.getCard(card.id).events,
+      })),
+    ]),
+  );
+}
+
 function navigation(app) {
   const allCards = app.listCards();
   const projects = app.listProjects().map((project) => {
@@ -172,6 +184,7 @@ function navigation(app) {
 
   return {
     counts: counts(allCards),
+    onlineAgents: app.listOnlineAgents(),
     projects,
   };
 }
