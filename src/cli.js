@@ -1,5 +1,5 @@
 const fs = require("node:fs");
-const { CARD_STATUSES } = require("./constants");
+const { CARD_STATUSES, WIP_LIMITS } = require("./constants");
 const { createMistri } = require("./domain");
 const { requireWorkspace, workspaceForInit } = require("./paths");
 const { startServer } = require("./server");
@@ -103,12 +103,15 @@ function dispatch(app, env, parsed, area, action, rest) {
         project: requiredFlag(flags, "project"),
         feature: requiredFlag(flags, "feature"),
         title: requiredFlag(flags, "title"),
+        userStory: flags.story,
         problemStatement: requiredFlag(flags, "problem"),
         acceptanceCriteria: flags.ac || flags.acceptance,
         definitionOfDone: requiredFlag(flags, "done"),
         targetRepo: flags.repo,
         expectedRole: flags.expectedRole || flags.role || "developer",
         riskLevel: flags.risk || "medium",
+        storyPoints: flags.points,
+        sprint: flags.sprint,
         priority: flags.priority,
         actor,
         role: flags.createdByRole || "pm",
@@ -267,9 +270,13 @@ function printCard(card) {
 function printBoard(board) {
   for (const status of CARD_STATUSES) {
     const cards = board[status] || [];
-    console.log(`${status} (${cards.length})`);
+    const limit = WIP_LIMITS[status] ? ` / ${WIP_LIMITS[status]}` : "";
+    const warning = WIP_LIMITS[status] && cards.length > WIP_LIMITS[status] ? " over WIP" : "";
+    console.log(`${status} (${cards.length}${limit})${warning}`);
     for (const card of cards) {
-      console.log(`  #${card.id} P${card.priority} ${card.title} [${card.projectName}/${card.featureName}]`);
+      const points = card.storyPoints > 0 ? ` ${card.storyPoints}sp` : "";
+      const sprint = card.sprint ? ` ${card.sprint}` : "";
+      console.log(`  #${card.id} P${card.priority}${points}${sprint} ${card.title} [${card.projectName}/${card.featureName}]`);
     }
   }
 }
@@ -314,7 +321,7 @@ Usage:
   mistri project create "Mobile App" [--description "..."]
   mistri project list
   mistri feature create "Login Revamp" --project "Mobile App" [--summary "..."]
-  mistri card create --project "Mobile App" --feature "Login Revamp" --title "Add reset" --problem "..." --ac "..." --done "..."
+  mistri card create --project "Mobile App" --feature "Login Revamp" --title "Add reset" --story "As a user..." --problem "..." --ac "..." --done "..." --points 3 --sprint "Sprint 1"
   mistri card submit 1
   mistri card show 1
   mistri card list [--status pending_approval]

@@ -5,6 +5,7 @@ function openDatabase(dbPath) {
   fs.mkdirSync(require("node:path").dirname(dbPath), { recursive: true });
 
   const db = new DatabaseSync(dbPath);
+  db.exec("PRAGMA busy_timeout = 5000");
   db.exec("PRAGMA foreign_keys = ON");
   migrate(db);
   return db;
@@ -37,12 +38,15 @@ function migrate(db) {
       project_id INTEGER NOT NULL,
       feature_id INTEGER NOT NULL,
       title TEXT NOT NULL,
+      user_story TEXT NOT NULL DEFAULT '',
       problem_statement TEXT NOT NULL,
       acceptance_criteria TEXT NOT NULL,
       definition_of_done TEXT NOT NULL,
       target_repo TEXT NOT NULL,
       expected_role TEXT NOT NULL,
       risk_level TEXT NOT NULL,
+      story_points INTEGER NOT NULL DEFAULT 0,
+      sprint TEXT NOT NULL DEFAULT '',
       status TEXT NOT NULL,
       approval_status TEXT NOT NULL,
       priority INTEGER NOT NULL DEFAULT 3,
@@ -70,6 +74,17 @@ function migrate(db) {
       FOREIGN KEY (card_id) REFERENCES cards(id) ON DELETE CASCADE
     );
   `);
+
+  ensureColumn(db, "cards", "user_story", "TEXT NOT NULL DEFAULT ''");
+  ensureColumn(db, "cards", "story_points", "INTEGER NOT NULL DEFAULT 0");
+  ensureColumn(db, "cards", "sprint", "TEXT NOT NULL DEFAULT ''");
+}
+
+function ensureColumn(db, table, column, definition) {
+  const columns = db.prepare(`PRAGMA table_info(${table})`).all().map((row) => row.name);
+  if (!columns.includes(column)) {
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+  }
 }
 
 function now() {
@@ -117,12 +132,15 @@ function mapCard(row) {
     projectName: row.project_name,
     featureName: row.feature_name,
     title: row.title,
+    userStory: row.user_story,
     problemStatement: row.problem_statement,
     acceptanceCriteria: parseJson(row.acceptance_criteria, []),
     definitionOfDone: row.definition_of_done,
     targetRepo: row.target_repo,
     expectedRole: row.expected_role,
     riskLevel: row.risk_level,
+    storyPoints: row.story_points,
+    sprint: row.sprint,
     status: row.status,
     approvalStatus: row.approval_status,
     priority: row.priority,
@@ -226,12 +244,15 @@ function createStore(dbPath) {
           project_id,
           feature_id,
           title,
+          user_story,
           problem_statement,
           acceptance_criteria,
           definition_of_done,
           target_repo,
           expected_role,
           risk_level,
+          story_points,
+          sprint,
           status,
           approval_status,
           priority,
@@ -241,18 +262,21 @@ function createStore(dbPath) {
           created_at,
           updated_at
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `)
       .run(
         input.projectId,
         input.featureId,
         input.title,
+        input.userStory,
         input.problemStatement,
         JSON.stringify(input.acceptanceCriteria),
         input.definitionOfDone,
         input.targetRepo,
         input.expectedRole,
         input.riskLevel,
+        input.storyPoints,
+        input.sprint,
         input.status,
         input.approvalStatus,
         input.priority,
@@ -409,4 +433,3 @@ module.exports = {
   createStore,
   now,
 };
-

@@ -11,6 +11,25 @@ const STATUSES = [
   "paused",
   "cancelled",
 ];
+const STATUS_LABELS = {
+  draft: "Product Backlog",
+  pending_approval: "Admin Approval",
+  needs_changes: "Needs Refinement",
+  rejected: "Rejected",
+  ready: "Ready",
+  in_progress: "In Progress",
+  review: "Code Review",
+  testing: "QA",
+  done: "Done",
+  paused: "Paused",
+  cancelled: "Cancelled",
+};
+const WIP_LIMITS = {
+  ready: 8,
+  in_progress: 3,
+  review: 3,
+  testing: 3,
+};
 
 const state = {
   board: {},
@@ -35,8 +54,9 @@ function render(board) {
   const cards = STATUSES.flatMap((status) => board[status] || []);
   const pending = board.pending_approval || [];
   const active = ["in_progress", "review", "testing"].flatMap((status) => board[status] || []);
+  const activePoints = active.reduce((total, card) => total + (card.storyPoints || 0), 0);
 
-  document.getElementById("summary").textContent = `${pending.length} pending approval · ${active.length} active · ${cards.length} total`;
+  document.getElementById("summary").textContent = `${pending.length} pending approval · ${active.length} active · ${activePoints} active points · ${cards.length} total`;
   document.getElementById("approvalCount").textContent = pending.length;
   document.getElementById("activeCount").textContent = active.length;
   document.getElementById("cardCount").textContent = cards.length;
@@ -102,7 +122,9 @@ function renderBoard(board) {
     const cards = board[status] || [];
     const column = el("section", "column");
     const heading = el("h3");
-    heading.append(document.createTextNode(label(status)), el("span", "", String(cards.length)));
+    const limit = WIP_LIMITS[status];
+    if (limit && cards.length > limit) column.classList.add("over-limit");
+    heading.append(document.createTextNode(label(status)), el("span", "", limit ? `${cards.length}/${limit}` : String(cards.length)));
     column.append(heading);
 
     if (cards.length === 0) {
@@ -129,6 +151,8 @@ function cardNode(card) {
       card.featureName,
       label(card.status),
       `P${card.priority}`,
+      card.storyPoints > 0 ? `${card.storyPoints}sp` : "",
+      card.sprint,
       card.assignedAgent || card.expectedRole,
     ]),
   );
@@ -144,7 +168,16 @@ async function openCard(id) {
   const detail = el("div", "detail");
   detail.append(
     el("h2", "", card.title),
-    meta([`#${card.id}`, card.projectName, card.featureName, label(card.status), card.riskLevel]),
+    meta([
+      `#${card.id}`,
+      card.projectName,
+      card.featureName,
+      label(card.status),
+      card.riskLevel,
+      card.storyPoints > 0 ? `${card.storyPoints}sp` : "",
+      card.sprint,
+    ]),
+    block("User Story", card.userStory),
     block("Problem", card.problemStatement),
     listBlock("Acceptance Criteria", card.acceptanceCriteria),
     block("Definition of Done", card.definitionOfDone),
@@ -237,6 +270,5 @@ function el(tag, className = "", text = "") {
 }
 
 function label(value) {
-  return String(value).replaceAll("_", " ");
+  return STATUS_LABELS[value] || String(value).replaceAll("_", " ");
 }
-

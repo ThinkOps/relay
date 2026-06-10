@@ -8,6 +8,8 @@ The first version is intentionally small:
 - Local web board UI
 - SQLite database at `.mistri/mistri.db`
 - Required acceptance criteria before a card can be submitted
+- Agile-inspired card fields: user story, story points, sprint label, acceptance criteria, definition of done
+- WIP limits surfaced on the board for ready, in-progress, review, and QA
 - Append-only event trail for card activity
 - Git repo metadata captured when cards are created
 
@@ -36,10 +38,13 @@ npm run mistri -- card create \
   --project "Mistri" \
   --feature "Agent Work Control" \
   --title "Build approval-gated CLI" \
+  --story "As an admin, I want to approve scoped work before agents start so project execution stays controlled" \
   --problem "Agents need admin approval before execution" \
   --ac "PM can create a complete card" \
   --ac "Admin can approve before work starts" \
   --done "CLI supports submit, approve, claim, and board" \
+  --points 3 \
+  --sprint "Sprint 1" \
   --risk low \
   --role developer
 ```
@@ -73,6 +78,12 @@ Cards move through this lifecycle:
 draft -> pending_approval -> ready -> in_progress -> review -> testing -> done
 ```
 
+The UI labels these in a lighter agile style:
+
+```text
+Product Backlog -> Admin Approval -> Ready -> In Progress -> Code Review -> QA -> Done
+```
+
 Admin control paths:
 
 ```text
@@ -84,6 +95,13 @@ testing -> done
 ```
 
 Only admin can approve, reject, request changes, pause, cancel, or mark a card done.
+
+The board shows WIP limits for flow control:
+
+- ready: 8
+- in progress: 3
+- code review: 3
+- QA: 3
 
 ## Card Requirements
 
@@ -100,6 +118,12 @@ A card must include:
 - risk level
 
 Acceptance criteria can be passed more than once with `--ac`.
+
+Recommended agile fields:
+
+- `--story`: user story in "As a/I want/so that" form
+- `--points`: story points from 0 to 100
+- `--sprint`: sprint or iteration label
 
 ## CLI Reference
 
@@ -134,4 +158,3 @@ npm test
 ```
 
 The tests use real temporary SQLite databases. The server test starts a temporary localhost HTTP server.
-

@@ -55,12 +55,15 @@ function createMistri({ dbPath, cwd = process.cwd() }) {
       projectId: project.id,
       featureId: feature.id,
       title: requiredText(input.title, "Card title"),
+      userStory: optionalText(input.userStory),
       problemStatement: requiredText(input.problemStatement, "Problem statement"),
       acceptanceCriteria: acceptanceCriteria(input.acceptanceCriteria),
       definitionOfDone: requiredText(input.definitionOfDone, "Definition of done"),
       targetRepo: requiredText(input.targetRepo || git.remoteUrl || git.repoPath, "Target repo"),
       expectedRole: role(input.expectedRole || "developer"),
       riskLevel: enumValue(input.riskLevel || "medium", RISK_LEVELS, "Risk level"),
+      storyPoints: storyPoints(input.storyPoints),
+      sprint: optionalText(input.sprint),
       status: "draft",
       approvalStatus: "draft",
       priority: priority(input.priority),
@@ -379,6 +382,15 @@ function priority(value) {
   return number;
 }
 
+function storyPoints(value) {
+  if (value === undefined || value === null || value === "") return 0;
+  const number = Number.parseInt(String(value), 10);
+  if (!Number.isInteger(number) || number < 0 || number > 100) {
+    throw new Error("Story points must be an integer from 0 to 100.");
+  }
+  return number;
+}
+
 function assertRole(value, allowed, message) {
   const normalized = role(value);
   if (!allowed.includes(normalized)) throw new Error(message);
@@ -417,4 +429,3 @@ function assertMove(current, next, actingRole) {
 module.exports = {
   createMistri,
 };
-

@@ -26,6 +26,8 @@ test("server exposes board data and protects mutations with token", async () => 
     targetRepo: "local",
     expectedRole: "developer",
     riskLevel: "low",
+    storyPoints: 3,
+    sprint: "Sprint 2",
     actor: "pm",
     role: "pm",
   });
@@ -37,6 +39,8 @@ test("server exposes board data and protects mutations with token", async () => 
     const boardResponse = await fetch(`${server.url}/api/board`);
     const board = await boardResponse.json();
     assert.equal(board.pending_approval.length, 1);
+    assert.equal(board.pending_approval[0].storyPoints, 3);
+    assert.equal(board.pending_approval[0].sprint, "Sprint 2");
 
     const blocked = await fetch(`${server.url}/api/admin/approve/${card.id}`, {
       method: "POST",
@@ -60,4 +64,3 @@ test("server exposes board data and protects mutations with token", async () => 
     await server.close();
   }
 });
-

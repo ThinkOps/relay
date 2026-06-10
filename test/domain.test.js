@@ -30,17 +30,23 @@ test("admin approval gates card execution", () => {
     project: "Mobile App",
     feature: "Login Revamp",
     title: "Add password reset",
+    userStory: "As a locked-out user, I want to reset my password so I can recover access.",
     problemStatement: "Users need to recover accounts without support.",
     acceptanceCriteria: ["User can request reset email", "Expired tokens are rejected"],
     definitionOfDone: "Reset flow works and is tested.",
     targetRepo: "git@example.com:mobile/app.git",
     expectedRole: "developer",
     riskLevel: "medium",
+    storyPoints: 5,
+    sprint: "Sprint 1",
     actor: "pm-agent",
     role: "pm",
   });
 
   assert.equal(card.status, "draft");
+  assert.equal(card.userStory, "As a locked-out user, I want to reset my password so I can recover access.");
+  assert.equal(card.storyPoints, 5);
+  assert.equal(card.sprint, "Sprint 1");
   assert.throws(() => app.claimCard(card.id, { role: "developer", agent: "dev-agent" }), /ready/);
 
   app.submitCard(card.id, { actor: "pm-agent", role: "pm" });
@@ -124,4 +130,3 @@ test("only admin can mark cards done", () => {
 
   app.close();
 });
-

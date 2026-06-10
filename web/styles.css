@@ -135,6 +135,10 @@ main {
   padding: 10px;
 }
 
+.column.over-limit {
+  border-color: #d58f5b;
+}
+
 .column h3 {
   align-items: center;
   display: flex;
@@ -147,6 +151,10 @@ main {
   color: var(--muted);
   font-size: 12px;
   font-weight: 500;
+}
+
+.column.over-limit h3 span {
+  color: var(--warn);
 }
 
 .card {
@@ -343,4 +351,3 @@ main {
     grid-auto-columns: 82vw;
   }
 }
-

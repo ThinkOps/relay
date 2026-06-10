@@ -15,6 +15,12 @@ const CARD_STATUSES = [
 ];
 const APPROVAL_STATUSES = ["draft", "pending", "approved", "needs_changes", "rejected"];
 const FEATURE_STATUSES = ["active", "paused", "done"];
+const WIP_LIMITS = {
+  ready: 8,
+  in_progress: 3,
+  review: 3,
+  testing: 3,
+};
 
 module.exports = {
   APPROVAL_STATUSES,
@@ -22,5 +28,5 @@ module.exports = {
   FEATURE_STATUSES,
   RISK_LEVELS,
   ROLES,
+  WIP_LIMITS,
 };
-
