@@ -1,5 +1,5 @@
 async function runCli() {
-  console.log("Mistri is not initialized yet.");
+  console.log("Mistri domain is available. CLI commands are coming next.");
 }
 
 module.exports = {
