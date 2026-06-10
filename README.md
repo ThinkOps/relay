@@ -116,6 +116,7 @@ The UI has a left panel for context switching:
 
 - `All Work`: every project and feature
 - `Needs Approval`: cards waiting for admin approval
+- `Agents`: online/offline agents, assigned work, and recent activity
 - project links: one kanban board for that project
 - feature links: one kanban board for that feature
 
@@ -124,6 +125,8 @@ The filters are URL-based:
 ```text
 /                 all work
 /?view=approvals  approval queue
+/?view=agents     agent activity page
+/?view=agents&agent=dev-agent  selected agent detail
 /?project=1       project board
 /?feature=3       feature board
 ```
@@ -135,7 +138,7 @@ npm run mistri -- agent heartbeat --role developer --agent dev-agent
 npm run mistri -- agent list --json
 ```
 
-Cards show a small ownership tag. Claimed cards show `agent: name`; unclaimed cards show the expected role needed for the work.
+Cards show a small ownership tag. Claimed cards show the agent name with an online/offline dot; unclaimed cards show the expected role needed for the work.
 
 Card updates and long scope fields in the UI support a safe Markdown subset: headings, paragraphs, bullet and numbered lists, blockquotes, fenced code blocks, inline code, bold, and italics. The renderer builds DOM text nodes instead of raw HTML.
 

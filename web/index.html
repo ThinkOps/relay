@@ -9,47 +9,59 @@
     <script src="/app.js" defer></script>
   </head>
   <body>
-    <header class="topbar">
-      <div>
-        <h1>Mistri</h1>
-        <p id="summary">Loading board...</p>
-      </div>
-      <button class="icon-button" id="refreshButton" type="button" title="Refresh board" aria-label="Refresh board">↻</button>
-    </header>
-
     <div class="app-shell">
       <aside class="sidebar">
-        <div class="sidebar-heading">
-          <h2>Workspaces</h2>
+        <div class="brand-block">
+          <div class="brand-mark">M</div>
+          <div>
+            <h1>Mistri</h1>
+            <p>AI Operations</p>
+          </div>
         </div>
         <nav class="nav-list" id="projectNav" aria-label="Projects and features"></nav>
       </aside>
 
-      <main>
-        <section class="band">
-          <div class="section-heading">
-            <h2>Approval Queue</h2>
-            <span id="approvalCount">0</span>
+      <div class="main-shell">
+        <header class="topbar">
+          <div class="topbar-copy">
+            <nav class="top-tabs" aria-label="Workspace views">
+              <span>Status</span>
+              <span>Metrics</span>
+              <span class="active">Board</span>
+            </nav>
+            <p id="summary">Loading board...</p>
           </div>
-          <div class="approval-list" id="approvalQueue"></div>
-        </section>
+          <button class="icon-button" id="refreshButton" type="button" title="Refresh board" aria-label="Refresh board">↻</button>
+        </header>
 
-        <section class="band">
-          <div class="section-heading">
-            <h2>Active Work</h2>
-            <span id="activeCount">0</span>
-          </div>
-          <div class="active-list" id="activeWork"></div>
-        </section>
+        <main>
+          <section class="agents-view" id="agentsView" hidden></section>
 
-        <section class="board-wrap">
-          <div class="section-heading">
-            <h2 id="boardTitle">Board</h2>
-            <span id="cardCount">0</span>
-          </div>
-          <div class="board" id="board"></div>
-        </section>
-      </main>
+          <section class="band" id="approvalSection">
+            <div class="section-heading">
+              <h2>Approval Queue</h2>
+              <span id="approvalCount">0</span>
+            </div>
+            <div class="approval-list" id="approvalQueue"></div>
+          </section>
+
+          <section class="band" id="activeSection">
+            <div class="section-heading">
+              <h2>Active Work</h2>
+              <span id="activeCount">0</span>
+            </div>
+            <div class="active-list" id="activeWork"></div>
+          </section>
+
+          <section class="board-wrap" id="boardSection">
+            <div class="section-heading">
+              <h2 id="boardTitle">Board</h2>
+              <span id="cardCount">0</span>
+            </div>
+            <div class="board" id="board"></div>
+          </section>
+        </main>
+      </div>
     </div>
 
     <aside class="drawer" id="drawer" aria-hidden="true">

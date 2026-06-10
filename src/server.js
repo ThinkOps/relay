@@ -78,6 +78,11 @@ async function handleApi({ request, response, url, dbPath, cwd, token }) {
       return;
     }
 
+    if (request.method === "GET" && url.pathname === "/api/agents") {
+      sendJson(response, 200, agentsView(app));
+      return;
+    }
+
     if (request.method === "GET" && url.pathname === "/api/projects") {
       sendJson(response, 200, app.listProjects());
       return;
@@ -187,6 +192,56 @@ function navigation(app) {
     onlineAgents: app.listOnlineAgents(),
     projects,
   };
+}
+
+function agentsView(app) {
+  const onlineAgents = app.listOnlineAgents();
+  const onlineByName = new Map(onlineAgents.map((agent) => [agent.agent, agent]));
+  const cards = app.listCards().map((card) => ({
+    ...card,
+    events: app.getCard(card.id).events,
+  }));
+  const names = new Set(onlineAgents.map((agent) => agent.agent));
+
+  for (const card of cards) {
+    if (card.assignedAgent) names.add(card.assignedAgent);
+  }
+
+  return Array.from(names)
+    .sort((left, right) => {
+      const leftOnline = onlineByName.has(left) ? 0 : 1;
+      const rightOnline = onlineByName.has(right) ? 0 : 1;
+      return leftOnline - rightOnline || left.localeCompare(right);
+    })
+    .map((name) => {
+      const online = onlineByName.get(name);
+      const assignedCards = cards.filter((card) => card.assignedAgent === name);
+      const activeCards = assignedCards.filter(
+        (card) => !["done", "rejected", "cancelled"].includes(card.status),
+      );
+      const recentEvents = cards
+        .flatMap((card) =>
+          card.events
+            .filter((event) => event.actor === name)
+            .map((event) => ({
+              ...event,
+              cardTitle: card.title,
+              cardStatus: card.status,
+            })),
+        )
+        .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
+        .slice(0, 5);
+
+      return {
+        agent: name,
+        role: online?.role || assignedCards.find((card) => card.assignedAgent === name)?.assignedRole || "unknown",
+        online: Boolean(online),
+        lastSeen: online?.lastSeen || "",
+        activeCards,
+        assignedCards,
+        recentEvents,
+      };
+    });
 }
 
 function counts(cards) {

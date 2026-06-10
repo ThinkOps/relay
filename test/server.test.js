@@ -47,7 +47,23 @@ test("server exposes board data and protects mutations with token", async () => 
     actor: "pm",
     role: "pm",
   });
+  const claimedCard = app.createCard({
+    project: "Mistri",
+    feature: "Board Views",
+    title: "Show agent presence",
+    problemStatement: "Admin needs to see which agent is working.",
+    acceptanceCriteria: "Agent view lists active assigned work",
+    definitionOfDone: "UI can show the assigned online agent.",
+    targetRepo: "local",
+    expectedRole: "developer",
+    riskLevel: "low",
+    actor: "pm",
+    role: "pm",
+  });
   app.submitCard(card.id, { actor: "pm", role: "pm" });
+  app.submitCard(claimedCard.id, { actor: "pm", role: "pm" });
+  app.approveCard(claimedCard.id, { actor: "admin", role: "admin" });
+  app.claimCard(claimedCard.id, { actor: "dev-agent", role: "developer", agent: "dev-agent" });
   app.heartbeat({ agent: "dev-agent", role: "developer" });
   app.close();
 
@@ -64,11 +80,19 @@ test("server exposes board data and protects mutations with token", async () => 
     const navigation = await navigationResponse.json();
     const mistri = navigation.projects.find((project) => project.name === "Mistri");
     const adminGate = mistri.features.find((feature) => feature.name === "Admin Gate");
-    assert.equal(navigation.counts.total, 2);
+    assert.equal(navigation.counts.total, 3);
     assert.equal(navigation.onlineAgents.length, 1);
     assert.equal(navigation.onlineAgents[0].agent, "dev-agent");
-    assert.equal(mistri.counts.total, 1);
+    assert.equal(mistri.counts.total, 2);
     assert.equal(adminGate.counts.pending, 1);
+
+    const agentsResponse = await fetch(`${server.url}/api/agents`);
+    const agents = await agentsResponse.json();
+    assert.equal(agents.length, 1);
+    assert.equal(agents[0].agent, "dev-agent");
+    assert.equal(agents[0].online, true);
+    assert.equal(agents[0].activeCards.length, 1);
+    assert.equal(agents[0].activeCards[0].title, "Show agent presence");
 
     const projectBoardResponse = await fetch(`${server.url}/api/board?project=${mistri.id}`);
     const projectBoard = await projectBoardResponse.json();

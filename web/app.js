@@ -32,6 +32,7 @@ const WIP_LIMITS = {
 };
 
 const state = {
+  agents: [],
   board: {},
   navigation: null,
 };
@@ -47,9 +48,14 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 
 async function loadApp() {
-  const [navigation, board] = await Promise.all([request("/api/navigation"), request(boardPath())]);
+  const [navigation, board, agents] = await Promise.all([
+    request("/api/navigation"),
+    request(boardPath()),
+    request("/api/agents"),
+  ]);
   state.navigation = navigation;
   state.board = board;
+  state.agents = agents;
   renderNavigation(navigation);
   render(board);
   const cardId = currentFilter().card;
@@ -59,7 +65,7 @@ async function loadApp() {
 function boardPath() {
   const filter = currentFilter();
   const params = new URLSearchParams();
-  if (filter.view) params.set("view", filter.view);
+  if (filter.view && filter.view !== "agents") params.set("view", filter.view);
   if (filter.project) params.set("project", filter.project);
   if (filter.feature) params.set("feature", filter.feature);
   const query = params.toString();
@@ -72,12 +78,23 @@ function render(board) {
   const active = ["in_progress", "review", "testing"].flatMap((status) => board[status] || []);
   const activePoints = active.reduce((total, card) => total + (card.storyPoints || 0), 0);
   const onlineCount = state.navigation?.onlineAgents?.length || 0;
+  const agentsMode = currentFilter().view === "agents";
 
   document.getElementById("summary").textContent = `${contextTitle()} · ${onlineCount} online · ${pending.length} pending · ${active.length} active · ${activePoints} pts · ${cards.length} cards`;
   document.getElementById("approvalCount").textContent = pending.length;
   document.getElementById("activeCount").textContent = active.length;
   document.getElementById("cardCount").textContent = cards.length;
   document.getElementById("boardTitle").textContent = contextTitle();
+
+  document.getElementById("agentsView").hidden = !agentsMode;
+  document.getElementById("approvalSection").hidden = agentsMode;
+  document.getElementById("activeSection").hidden = agentsMode;
+  document.getElementById("boardSection").hidden = agentsMode;
+
+  if (agentsMode) {
+    renderAgentsView(state.agents);
+    return;
+  }
 
   renderApprovalQueue(pending);
   renderActiveWork(active);
@@ -92,6 +109,15 @@ function renderNavigation(navigation) {
   root.append(
     navLink("All Work", navigation.counts, "/", !filter.view && !filter.project && !filter.feature),
     navLink("Needs Approval", { total: navigation.counts.pending }, "/?view=approvals", filter.view === "approvals"),
+    navLink(
+      "Agents",
+      {
+        active: navigation.onlineAgents.length,
+        total: state.agents.length || navigation.onlineAgents.length,
+      },
+      "/?view=agents",
+      filter.view === "agents",
+    ),
   );
 
   if (navigation.projects.length === 0) {
@@ -204,7 +230,7 @@ function cardNode(card) {
   });
 
   const heading = el("div", "card-heading");
-  heading.append(el("h3", "", card.title), el("span", "owner-chip", workingAgentTag(card)));
+  heading.append(el("h3", "", card.title), ownerChip(card));
 
   node.append(
     heading,
@@ -214,6 +240,142 @@ function cardNode(card) {
   );
 
   return node;
+}
+
+function renderAgentsView(agents) {
+  const root = document.getElementById("agentsView");
+  const selectedName = currentFilter().agent;
+  const online = agents.filter((agent) => agent.online);
+  const activeCards = agents.flatMap((agent) => agent.activeCards || []);
+  const idleOnline = online.filter((agent) => (agent.activeCards || []).length === 0);
+  const offlineAssigned = agents.filter((agent) => !agent.online && (agent.assignedCards || []).length > 0);
+  root.replaceChildren();
+
+  const header = el("div", "agents-hero");
+  header.append(
+    agentStat("Online", online.length),
+    agentStat("Active Work", activeCards.length),
+    agentStat("Idle Online", idleOnline.length),
+    agentStat("Offline Assigned", offlineAssigned.length),
+  );
+  root.append(header);
+
+  if (agents.length === 0) {
+    root.append(empty("No agents have checked in yet."));
+    return;
+  }
+
+  const grid = el("div", "agents-grid");
+  for (const agent of agents) {
+    grid.append(agentNode(agent, selectedName === agent.agent));
+  }
+  root.append(grid);
+}
+
+function agentStat(labelText, value) {
+  const node = el("div", "agent-stat");
+  node.append(el("strong", "", String(value)), el("span", "", labelText));
+  return node;
+}
+
+function agentNode(agent, selected) {
+  const node = el("article", `agent-card${selected ? " selected" : ""}`.trim());
+  node.dataset.online = String(agent.online);
+
+  const header = el("button", "agent-card-header");
+  header.type = "button";
+  header.addEventListener("click", () => selectAgent(agent.agent));
+  header.append(
+    presenceDot(agent.online),
+    agentIdentity(agent),
+    el("span", "agent-work-count", `${(agent.activeCards || []).length} active`),
+  );
+  node.append(header);
+
+  const body = el("div", "agent-card-body");
+  if (selected) {
+    body.append(agentWorkBlock("Working On", agent.activeCards || []), agentActivityBlock(agent.recentEvents || []));
+  } else {
+    const previewCards = (agent.activeCards || []).slice(0, 2);
+    if (previewCards.length === 0) {
+      body.append(el("p", "agent-muted", agent.online ? "Online with no assigned active card." : "Offline; no active assigned work."));
+    } else {
+      const list = el("div", "agent-work-preview");
+      for (const card of previewCards) list.append(agentWorkItem(card));
+      body.append(list);
+    }
+  }
+  node.append(body);
+
+  return node;
+}
+
+function agentIdentity(agent) {
+  const node = el("div", "agent-identity");
+  node.append(
+    el("strong", "", agent.agent),
+    el("span", "", `${roleLabel(agent.role)} · ${agent.online ? `seen ${formatTime(agent.lastSeen)}` : "offline"}`),
+  );
+  return node;
+}
+
+function agentWorkBlock(title, cards) {
+  const node = el("section", "agent-detail-block");
+  node.append(el("h3", "", title));
+  if (cards.length === 0) {
+    node.append(empty("No active assigned work."));
+    return node;
+  }
+
+  const list = el("div", "agent-work-list");
+  for (const card of cards) list.append(agentWorkItem(card));
+  node.append(list);
+  return node;
+}
+
+function agentActivityBlock(events) {
+  const node = el("section", "agent-detail-block");
+  node.append(el("h3", "", "Recent Activity"));
+  if (events.length === 0) {
+    node.append(empty("No recent activity from this agent."));
+    return node;
+  }
+
+  const list = el("div", "agent-activity-list");
+  for (const event of events) {
+    const item = el("div", "agent-activity-item");
+    item.append(
+      el("strong", "", actionLabel(event.action)),
+      el("span", "", `${event.cardTitle} · ${formatTime(event.createdAt)}`),
+      el("p", "", plainPreview(event.message || "")),
+    );
+    list.append(item);
+  }
+  node.append(list);
+  return node;
+}
+
+function agentWorkItem(card) {
+  const node = el("button", "agent-work-item");
+  node.type = "button";
+  node.addEventListener("click", (event) => {
+    event.stopPropagation();
+    openCard(card.id);
+  });
+  node.append(
+    el("strong", "", card.title),
+    el("span", "", `${card.projectName} / ${card.featureName}`),
+    meta([`#${card.id}`, label(card.status), card.storyPoints > 0 ? `${card.storyPoints}sp` : "", card.sprint]),
+  );
+  return node;
+}
+
+function selectAgent(name) {
+  const url = new URL(window.location.href);
+  url.searchParams.set("view", "agents");
+  url.searchParams.set("agent", name);
+  window.history.pushState({}, "", `${url.pathname}${url.search}`);
+  render(state.board);
 }
 
 async function openCard(id, options = {}) {
@@ -516,11 +678,25 @@ function firstText(values) {
   return values.find(Boolean) || "";
 }
 
-function workingAgentTag(card) {
+function ownerChip(card) {
+  const chip = el("span", `owner-chip${card.assignedAgent ? " assigned" : ""}`.trim());
   if (card.assignedAgent) {
-    return card.assignedAgent;
+    chip.append(presenceDot(isAgentOnline(card.assignedAgent)), el("span", "", card.assignedAgent));
+    return chip;
   }
-  return roleLabel(card.expectedRole);
+
+  chip.append(el("span", "", roleLabel(card.expectedRole)));
+  return chip;
+}
+
+function presenceDot(online) {
+  const dot = el("span", `presence-dot${online ? " online" : " offline"}`.trim());
+  dot.setAttribute("aria-label", online ? "Online" : "Offline");
+  return dot;
+}
+
+function isAgentOnline(name) {
+  return (state.navigation?.onlineAgents || []).some((agent) => agent.agent === name);
 }
 
 function roleLabel(role) {
@@ -714,6 +890,7 @@ function plainPreview(value) {
 function currentFilter() {
   const params = new URLSearchParams(window.location.search);
   return {
+    agent: params.get("agent"),
     card: params.get("card"),
     feature: params.get("feature"),
     project: params.get("project"),
