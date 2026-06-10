@@ -2,6 +2,7 @@ const fs = require("node:fs");
 const { CARD_STATUSES } = require("./constants");
 const { createMistri } = require("./domain");
 const { requireWorkspace, workspaceForInit } = require("./paths");
+const { startServer } = require("./server");
 
 async function runCli(argv = process.argv.slice(2), env = process.env, cwd = process.cwd()) {
   const parsed = parseArgv(argv);
@@ -21,11 +22,19 @@ async function runCli(argv = process.argv.slice(2), env = process.env, cwd = pro
     return;
   }
 
+  const workspace = requireWorkspace(cwd);
+
   if (area === "ui") {
-    throw new Error("`mistri ui` is coming in the next commit.");
+    const app = await startServer({
+      dbPath: workspace.dbPath,
+      cwd,
+      port: parsed.flags.port || 4173,
+    });
+    console.log(`Mistri UI running at ${app.url}`);
+    await waitForShutdown(app);
+    return;
   }
 
-  const workspace = requireWorkspace(cwd);
   const app = createMistri({ dbPath: workspace.dbPath, cwd });
 
   try {
@@ -34,6 +43,20 @@ async function runCli(argv = process.argv.slice(2), env = process.env, cwd = pro
   } finally {
     app.close();
   }
+}
+
+function waitForShutdown(app) {
+  return new Promise((resolve) => {
+    const stop = async () => {
+      process.off("SIGINT", stop);
+      process.off("SIGTERM", stop);
+      await app.close();
+      resolve();
+    };
+
+    process.on("SIGINT", stop);
+    process.on("SIGTERM", stop);
+  });
 }
 
 function dispatch(app, env, parsed, area, action, rest) {
@@ -314,4 +337,3 @@ module.exports = {
   parseArgv,
   runCli,
 };
-

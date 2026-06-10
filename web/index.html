@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Mistri</title>
+    <link rel="stylesheet" href="/styles.css">
+    <script src="/config.js" defer></script>
+    <script src="/app.js" defer></script>
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <h1>Mistri</h1>
+        <p id="summary">Loading board...</p>
+      </div>
+      <button class="icon-button" id="refreshButton" type="button" title="Refresh board" aria-label="Refresh board">↻</button>
+    </header>
+
+    <main>
+      <section class="band">
+        <div class="section-heading">
+          <h2>Approval Queue</h2>
+          <span id="approvalCount">0</span>
+        </div>
+        <div class="approval-list" id="approvalQueue"></div>
+      </section>
+
+      <section class="band">
+        <div class="section-heading">
+          <h2>Active Work</h2>
+          <span id="activeCount">0</span>
+        </div>
+        <div class="active-list" id="activeWork"></div>
+      </section>
+
+      <section class="board-wrap">
+        <div class="section-heading">
+          <h2>Board</h2>
+          <span id="cardCount">0</span>
+        </div>
+        <div class="board" id="board"></div>
+      </section>
+    </main>
+
+    <aside class="drawer" id="drawer" aria-hidden="true">
+      <div class="drawer-panel">
+        <button class="icon-button close" id="closeDrawer" type="button" title="Close" aria-label="Close">×</button>
+        <div id="cardDetail"></div>
+      </div>
+    </aside>
+  </body>
+</html>
+
