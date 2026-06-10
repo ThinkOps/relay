@@ -70,6 +70,28 @@ function dispatch(app, env, parsed, area, action, rest) {
   const flags = parsed.flags;
   const actor = flags.actor || env.USER || "unknown";
 
+  if (area !== "agent") {
+    app.heartbeat({
+      actor,
+      agent: flags.agent || actor,
+      role: inferredHeartbeatRole(area, action, flags),
+    });
+  }
+
+  if (area === "agent") {
+    if (action === "heartbeat") {
+      return app.heartbeat({
+        actor,
+        agent: flags.agent || actor,
+        role: requiredFlag(flags, "role"),
+      });
+    }
+
+    if (action === "list") {
+      return app.listOnlineAgents({ windowMs: flags.windowMs });
+    }
+  }
+
   if (area === "project") {
     if (action === "create") {
       return app.createProject({
@@ -340,6 +362,15 @@ function requiredFlag(flags, key) {
   return flags[key];
 }
 
+function inferredHeartbeatRole(area, action, flags) {
+  if (area === "admin") return "admin";
+  if (area === "project") return flags.role || "admin";
+  if (area === "feature") return "pm";
+  if (area === "card" && ["create", "submit", "revise"].includes(action)) return flags.actorRole || "pm";
+  if (["claim", "move", "note", "link"].includes(area)) return flags.role || "developer";
+  return flags.actorRole || flags.role || "pm";
+}
+
 function printHelp() {
   console.log(`Mistri
 
@@ -360,6 +391,8 @@ Usage:
   mistri claim 1 --role developer [--agent dev-agent]
   mistri move 1 review --role developer
   mistri note 1 "Implemented reset token flow" [--role developer]
+  mistri agent heartbeat --role developer [--agent dev-agent]
+  mistri agent list
   mistri board
   mistri db
   mistri ui [--port 4173]

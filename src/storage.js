@@ -73,6 +73,12 @@ function migrate(db) {
       created_at TEXT NOT NULL,
       FOREIGN KEY (card_id) REFERENCES cards(id) ON DELETE CASCADE
     );
+
+    CREATE TABLE IF NOT EXISTS agent_heartbeats (
+      agent TEXT PRIMARY KEY,
+      role TEXT NOT NULL,
+      last_seen TEXT NOT NULL
+    );
   `);
 
   ensureColumn(db, "cards", "user_story", "TEXT NOT NULL DEFAULT ''");
@@ -166,6 +172,15 @@ function mapEvent(row) {
     message: row.message,
     metadata: parseJson(row.metadata, {}),
     createdAt: row.created_at,
+  };
+}
+
+function mapAgentHeartbeat(row) {
+  if (!row) return null;
+  return {
+    agent: row.agent,
+    role: row.role,
+    lastSeen: row.last_seen,
   };
 }
 
@@ -419,6 +434,26 @@ function createStore(dbPath) {
     return getCardById(id);
   }
 
+  function upsertAgentHeartbeat(input) {
+    const lastSeen = now();
+    db.prepare(`
+      INSERT INTO agent_heartbeats (agent, role, last_seen)
+      VALUES (?, ?, ?)
+      ON CONFLICT(agent) DO UPDATE SET
+        role = excluded.role,
+        last_seen = excluded.last_seen
+    `).run(input.agent, input.role, lastSeen);
+
+    return mapAgentHeartbeat(db.prepare("SELECT * FROM agent_heartbeats WHERE agent = ?").get(input.agent));
+  }
+
+  function listOnlineAgents(cutoffIso) {
+    return db
+      .prepare("SELECT * FROM agent_heartbeats WHERE last_seen >= ? ORDER BY last_seen DESC, agent ASC")
+      .all(cutoffIso)
+      .map(mapAgentHeartbeat);
+  }
+
   function addEvent(input) {
     const result = db
       .prepare(`
@@ -465,10 +500,12 @@ function createStore(dbPath) {
     listCards,
     listEvents,
     listFeatures,
+    listOnlineAgents,
     listProjects,
     updateCardLinks,
     updateCardScope,
     updateCardState,
+    upsertAgentHeartbeat,
   };
 }
 

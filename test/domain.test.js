@@ -63,6 +63,7 @@ test("admin approval gates card execution", () => {
 
   assert.equal(claimed.status, "in_progress");
   assert.equal(claimed.assignedAgent, "dev-agent");
+  assert.equal(app.listOnlineAgents()[0].agent, "dev-agent");
 
   app.close();
 });
@@ -176,6 +177,23 @@ test("approved cards cannot be revised silently", () => {
       }),
     /Only draft or needs-changes cards can be revised/,
   );
+
+  app.close();
+});
+
+test("agent heartbeat marks agents online", () => {
+  const app = seededApp();
+
+  const heartbeat = app.heartbeat({
+    agent: "dev-agent",
+    role: "developer",
+  });
+  const online = app.listOnlineAgents();
+
+  assert.equal(heartbeat.agent, "dev-agent");
+  assert.equal(heartbeat.role, "developer");
+  assert.equal(online.length, 1);
+  assert.equal(online[0].agent, "dev-agent");
 
   app.close();
 });

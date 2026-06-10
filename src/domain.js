@@ -4,6 +4,7 @@ const { createStore } = require("./storage");
 
 function createMistri({ dbPath, cwd = process.cwd() }) {
   const store = createStore(dbPath);
+  const ONLINE_WINDOW_MS = 5 * 60 * 1000;
 
   function createProject(input) {
     const name = requiredText(input.name, "Project name");
@@ -209,6 +210,7 @@ function createMistri({ dbPath, cwd = process.cwd() }) {
       assignedAgent: requiredText(input.agent || input.actor, "Agent"),
     });
 
+    heartbeat({ agent: updated.assignedAgent, role: updated.assignedRole });
     event(updated.id, input, "card.claimed", `${updated.assignedAgent} claimed as ${claimingRole}`);
     return updated;
   }
@@ -310,6 +312,19 @@ function createMistri({ dbPath, cwd = process.cwd() }) {
     }, {});
   }
 
+  function heartbeat(input = {}) {
+    return store.upsertAgentHeartbeat({
+      agent: requiredText(input.agent || input.actor, "Agent"),
+      role: role(input.role || "developer"),
+    });
+  }
+
+  function listOnlineAgents(input = {}) {
+    const windowMs = onlineWindowMs(input.windowMs || ONLINE_WINDOW_MS);
+    const cutoffIso = new Date(Date.now() - windowMs).toISOString();
+    return store.listOnlineAgents(cutoffIso);
+  }
+
   function close() {
     store.close();
   }
@@ -362,9 +377,11 @@ function createMistri({ dbPath, cwd = process.cwd() }) {
     createFeature,
     createProject,
     getCard,
+    heartbeat,
     linkCard,
     listCards,
     listFeatures: store.listFeatures,
+    listOnlineAgents,
     listProjects: store.listProjects,
     moveCard,
     pauseCard,
@@ -432,6 +449,14 @@ function storyPoints(value) {
   const number = Number.parseInt(String(value), 10);
   if (!Number.isInteger(number) || number < 0 || number > 100) {
     throw new Error("Story points must be an integer from 0 to 100.");
+  }
+  return number;
+}
+
+function onlineWindowMs(value) {
+  const number = Number.parseInt(String(value), 10);
+  if (!Number.isInteger(number) || number < 1000 || number > 24 * 60 * 60 * 1000) {
+    throw new Error("Online window must be between 1000ms and 86400000ms.");
   }
   return number;
 }
