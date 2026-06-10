@@ -169,6 +169,7 @@ function renderBoard(board) {
   for (const status of STATUSES) {
     const cards = board[status] || [];
     const column = el("section", "column");
+    column.dataset.status = status;
     const heading = el("h3");
     const limit = WIP_LIMITS[status];
     if (limit && cards.length > limit) column.classList.add("over-limit");
