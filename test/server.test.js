@@ -64,6 +64,11 @@ test("server exposes board data and protects mutations with token", async () => 
   app.submitCard(claimedCard.id, { actor: "pm", role: "pm" });
   app.approveCard(claimedCard.id, { actor: "admin", role: "admin" });
   app.claimCard(claimedCard.id, { actor: "dev-agent", role: "developer", agent: "dev-agent" });
+  app.addNote(claimedCard.id, {
+    actor: "dev-agent",
+    role: "developer",
+    message: "## Progress\\n- Presence chip is wired",
+  });
   app.heartbeat({ agent: "dev-agent", role: "developer" });
   app.close();
 
@@ -83,8 +88,18 @@ test("server exposes board data and protects mutations with token", async () => 
     assert.equal(navigation.counts.total, 3);
     assert.equal(navigation.onlineAgents.length, 1);
     assert.equal(navigation.onlineAgents[0].agent, "dev-agent");
+    assert.equal(navigation.inboxCounts.action, 1);
     assert.equal(mistri.counts.total, 2);
     assert.equal(adminGate.counts.pending, 1);
+
+    const inboxResponse = await fetch(`${server.url}/api/inbox`);
+    const inbox = await inboxResponse.json();
+    assert.equal(inbox.actionItems.length, 1);
+    assert.equal(inbox.actionItems[0].cardId, card.id);
+    assert.equal(inbox.actionItems[0].label, "Needs approval");
+    assert.equal(inbox.counts.action, 1);
+    assert.equal(inbox.updateItems[0].label, "Update");
+    assert.match(inbox.updateItems[0].message, /Progress/);
 
     const agentsResponse = await fetch(`${server.url}/api/agents`);
     const agents = await agentsResponse.json();

@@ -115,6 +115,7 @@ npm run ui -- --port 4180
 The UI has a left panel for context switching:
 
 - `All Work`: every project and feature
+- `Inbox`: admin decisions, waiting follow-up, and recent agent updates
 - `Needs Approval`: cards waiting for admin approval
 - `Agents`: online/offline agents, assigned work, and recent activity
 - project links: one kanban board for that project
@@ -124,6 +125,7 @@ The filters are URL-based:
 
 ```text
 /                 all work
+/?view=inbox      admin inbox
 /?view=approvals  approval queue
 /?view=agents     agent activity page
 /?view=agents&agent=dev-agent  selected agent detail
@@ -139,6 +141,8 @@ npm run mistri -- agent list --json
 ```
 
 Cards show a small ownership tag. Claimed cards show the agent name with an online/offline dot; unclaimed cards show the expected role needed for the work.
+
+The Inbox is derived from the same append-only event trail as the card timeline. It does not have persistent read or archive state yet; it is a live triage view over current admin actions and recent agent updates.
 
 Card updates and long scope fields in the UI support a safe Markdown subset: headings, paragraphs, bullet and numbered lists, blockquotes, fenced code blocks, inline code, bold, and italics. The renderer builds DOM text nodes instead of raw HTML.
 

@@ -83,6 +83,11 @@ async function handleApi({ request, response, url, dbPath, cwd, token }) {
       return;
     }
 
+    if (request.method === "GET" && url.pathname === "/api/inbox") {
+      sendJson(response, 200, inboxView(app));
+      return;
+    }
+
     if (request.method === "GET" && url.pathname === "/api/projects") {
       sendJson(response, 200, app.listProjects());
       return;
@@ -174,6 +179,7 @@ function boardWithEvents(board, app) {
 
 function navigation(app) {
   const allCards = app.listCards();
+  const inbox = inboxView(app);
   const projects = app.listProjects().map((project) => {
     const features = app.listFeatures(project.id).map((feature) => ({
       ...feature,
@@ -189,8 +195,85 @@ function navigation(app) {
 
   return {
     counts: counts(allCards),
+    inboxCounts: inbox.counts,
     onlineAgents: app.listOnlineAgents(),
     projects,
+  };
+}
+
+function inboxView(app) {
+  const cards = app.listCards().map((card) => ({
+    ...card,
+    events: app.getCard(card.id).events,
+  }));
+  const actionItems = [];
+  const waitingItems = [];
+  const updateItems = [];
+
+  for (const card of cards) {
+    const latest = card.events.at(-1);
+
+    if (card.status === "pending_approval") {
+      actionItems.push(inboxItem(card, latest, {
+        action: "approval",
+        kind: "admin_action",
+        label: "Needs approval",
+        message: latest?.message || firstText(card.acceptanceCriteria) || card.problemStatement,
+        tone: "pending",
+      }));
+    }
+
+    if (card.status === "testing") {
+      actionItems.push(inboxItem(card, latest, {
+        action: "done",
+        kind: "admin_action",
+        label: "QA decision",
+        message: latest?.message || "QA is waiting for admin closeout.",
+        tone: "testing",
+      }));
+    }
+
+    if (card.status === "needs_changes") {
+      waitingItems.push(inboxItem(card, latest, {
+        action: "follow_up",
+        kind: "waiting",
+        label: "PM revision needed",
+        message: latest?.message || "PM needs to revise and resubmit this card.",
+        tone: "waiting",
+      }));
+    }
+
+    for (const event of card.events) {
+      if (event.role === "admin") continue;
+      if (!["card.claimed", "card.linked", "card.moved", "card.note", "card.revised", "card.submitted"].includes(event.action)) {
+        continue;
+      }
+      updateItems.push(inboxItem(card, event, {
+        action: "open",
+        kind: "agent_update",
+        label: actionLabel(event.action),
+        message: event.message,
+        tone: event.role,
+      }));
+    }
+  }
+
+  const sortNewest = (left, right) =>
+    right.createdAt.localeCompare(left.createdAt) || right.eventId - left.eventId;
+  actionItems.sort(sortNewest);
+  waitingItems.sort(sortNewest);
+  updateItems.sort(sortNewest);
+
+  return {
+    actionItems,
+    counts: {
+      action: actionItems.length,
+      total: actionItems.length + waitingItems.length + updateItems.length,
+      updates: updateItems.length,
+      waiting: waitingItems.length,
+    },
+    updateItems: updateItems.slice(0, 30),
+    waitingItems,
   };
 }
 
@@ -250,6 +333,45 @@ function counts(cards) {
     pending: cards.filter((card) => card.approvalStatus === "pending").length,
     total: cards.length,
   };
+}
+
+function inboxItem(card, event, input) {
+  return {
+    action: input.action,
+    actor: event?.actor || "",
+    cardId: card.id,
+    cardStatus: card.status,
+    createdAt: event?.createdAt || card.updatedAt,
+    eventId: event?.id || 0,
+    featureName: card.featureName,
+    id: `${input.kind}-${card.id}-${event?.id || card.updatedAt}`,
+    kind: input.kind,
+    label: input.label,
+    message: input.message || "",
+    projectName: card.projectName,
+    role: event?.role || card.expectedRole,
+    sprint: card.sprint,
+    storyPoints: card.storyPoints,
+    title: card.title,
+    tone: input.tone,
+  };
+}
+
+function firstText(values) {
+  if (!Array.isArray(values)) return values || "";
+  return values.find(Boolean) || "";
+}
+
+function actionLabel(action) {
+  const labels = {
+    "card.claimed": "Claimed",
+    "card.linked": "Linked",
+    "card.moved": "Moved",
+    "card.note": "Update",
+    "card.revised": "Revised",
+    "card.submitted": "Submitted",
+  };
+  return labels[action] || action.replaceAll(".", " ");
 }
 
 function positiveInteger(value, label) {

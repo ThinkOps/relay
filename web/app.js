@@ -34,6 +34,7 @@ const WIP_LIMITS = {
 const state = {
   agents: [],
   board: {},
+  inbox: null,
   navigation: null,
 };
 
@@ -48,14 +49,16 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 
 async function loadApp() {
-  const [navigation, board, agents] = await Promise.all([
+  const [navigation, board, agents, inbox] = await Promise.all([
     request("/api/navigation"),
     request(boardPath()),
     request("/api/agents"),
+    request("/api/inbox"),
   ]);
   state.navigation = navigation;
   state.board = board;
   state.agents = agents;
+  state.inbox = inbox;
   renderNavigation(navigation);
   render(board);
   const cardId = currentFilter().card;
@@ -65,7 +68,7 @@ async function loadApp() {
 function boardPath() {
   const filter = currentFilter();
   const params = new URLSearchParams();
-  if (filter.view && filter.view !== "agents") params.set("view", filter.view);
+  if (filter.view && !["agents", "inbox"].includes(filter.view)) params.set("view", filter.view);
   if (filter.project) params.set("project", filter.project);
   if (filter.feature) params.set("feature", filter.feature);
   const query = params.toString();
@@ -78,21 +81,37 @@ function render(board) {
   const active = ["in_progress", "review", "testing"].flatMap((status) => board[status] || []);
   const activePoints = active.reduce((total, card) => total + (card.storyPoints || 0), 0);
   const onlineCount = state.navigation?.onlineAgents?.length || 0;
-  const agentsMode = currentFilter().view === "agents";
+  const view = currentFilter().view;
+  const agentsMode = view === "agents";
+  const inboxMode = view === "inbox";
 
-  document.getElementById("summary").textContent = `${contextTitle()} · ${onlineCount} online · ${pending.length} pending · ${active.length} active · ${activePoints} pts · ${cards.length} cards`;
+  document.getElementById("summary").textContent = summaryText({
+    active,
+    activePoints,
+    cards,
+    inbox: state.inbox,
+    onlineCount,
+    pending,
+    view,
+  });
   document.getElementById("approvalCount").textContent = pending.length;
   document.getElementById("activeCount").textContent = active.length;
   document.getElementById("cardCount").textContent = cards.length;
   document.getElementById("boardTitle").textContent = contextTitle();
 
   document.getElementById("agentsView").hidden = !agentsMode;
-  document.getElementById("approvalSection").hidden = agentsMode;
-  document.getElementById("activeSection").hidden = agentsMode;
-  document.getElementById("boardSection").hidden = agentsMode;
+  document.getElementById("inboxView").hidden = !inboxMode;
+  document.getElementById("approvalSection").hidden = agentsMode || inboxMode;
+  document.getElementById("activeSection").hidden = agentsMode || inboxMode;
+  document.getElementById("boardSection").hidden = agentsMode || inboxMode;
 
   if (agentsMode) {
     renderAgentsView(state.agents);
+    return;
+  }
+
+  if (inboxMode) {
+    renderInboxView(state.inbox);
     return;
   }
 
@@ -108,6 +127,16 @@ function renderNavigation(navigation) {
 
   root.append(
     navLink("All Work", navigation.counts, "/", !filter.view && !filter.project && !filter.feature),
+    navLink(
+      "Inbox",
+      {
+        active: navigation.inboxCounts.waiting,
+        pending: navigation.inboxCounts.action,
+        total: navigation.inboxCounts.action + navigation.inboxCounts.waiting,
+      },
+      "/?view=inbox",
+      filter.view === "inbox",
+    ),
     navLink("Needs Approval", { total: navigation.counts.pending }, "/?view=approvals", filter.view === "approvals"),
     navLink(
       "Agents",
@@ -368,6 +397,124 @@ function agentWorkItem(card) {
     meta([`#${card.id}`, label(card.status), card.storyPoints > 0 ? `${card.storyPoints}sp` : "", card.sprint]),
   );
   return node;
+}
+
+function renderInboxView(inbox) {
+  const root = document.getElementById("inboxView");
+  root.replaceChildren();
+
+  const actionItems = inbox?.actionItems || [];
+  const waitingItems = inbox?.waitingItems || [];
+  const updateItems = inbox?.updateItems || [];
+  const updateCount = inbox?.counts?.updates ?? updateItems.length;
+
+  const header = el("div", "inbox-hero");
+  header.append(
+    inboxStat("Needs Admin", actionItems.length),
+    inboxStat("Waiting", waitingItems.length),
+    inboxStat("Agent Updates", updateCount),
+  );
+  root.append(header);
+
+  if (actionItems.length + waitingItems.length + updateItems.length === 0) {
+    root.append(empty("Inbox is clear."));
+    return;
+  }
+
+  root.append(
+    inboxBlock("Needs Admin", actionItems, "No admin decisions waiting."),
+    inboxBlock("Waiting On Agents", waitingItems, "No PM or agent follow-up waiting."),
+    inboxBlock("Recent Agent Updates", updateItems, "No recent agent updates."),
+  );
+}
+
+function inboxStat(labelText, value) {
+  const node = el("div", "inbox-stat");
+  node.append(el("strong", "", String(value)), el("span", "", labelText));
+  return node;
+}
+
+function inboxBlock(title, items, emptyText) {
+  const section = el("section", "inbox-block");
+  section.append(el("h2", "", title));
+
+  if (items.length === 0) {
+    section.append(empty(emptyText));
+    return section;
+  }
+
+  const list = el("div", "inbox-list");
+  for (const item of items) list.append(inboxItem(item));
+  section.append(list);
+  return section;
+}
+
+function inboxItem(item) {
+  const node = el("article", "inbox-item");
+  node.dataset.tone = item.tone;
+  node.tabIndex = 0;
+  node.setAttribute("role", "button");
+  node.setAttribute("aria-label", `Open ${item.title}`);
+  node.addEventListener("click", () => openCard(item.cardId));
+  node.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      openCard(item.cardId);
+    }
+  });
+
+  const head = el("div", "inbox-item-head");
+  head.append(
+    el("span", "inbox-label", item.label),
+    el("span", "inbox-time", formatTime(item.createdAt)),
+  );
+
+  const body = el("div", "inbox-item-body");
+  body.append(
+    el("h3", "", item.title),
+    el("p", "", plainPreview(item.message || "No message.")),
+    meta([
+      `#${item.cardId}`,
+      item.projectName,
+      item.featureName,
+      label(item.cardStatus),
+      roleLabel(item.role),
+      item.actor,
+      item.storyPoints > 0 ? `${item.storyPoints}sp` : "",
+      item.sprint,
+    ]),
+  );
+
+  node.append(head, body);
+  const actions = inboxActions(item);
+  if (actions) node.append(actions);
+  return node;
+}
+
+function inboxActions(item) {
+  if (item.action === "approval") {
+    const actions = el("div", "actions");
+    actions.append(
+      button("Approve", "action primary", () => adminAction("approve", item.cardId)),
+      button("Changes", "action warning", () => {
+        const reason = window.prompt("Reason");
+        if (reason) adminAction("changes", item.cardId, { reason });
+      }),
+      button("Reject", "action danger", () => {
+        const reason = window.prompt("Reason");
+        if (reason) adminAction("reject", item.cardId, { reason });
+      }),
+    );
+    return actions;
+  }
+
+  if (item.action === "done") {
+    const actions = el("div", "actions");
+    actions.append(button("Done", "action primary", () => adminAction("done", item.cardId)));
+    return actions;
+  }
+
+  return null;
 }
 
 function selectAgent(name) {
@@ -699,6 +846,15 @@ function isAgentOnline(name) {
   return (state.navigation?.onlineAgents || []).some((agent) => agent.agent === name);
 }
 
+function summaryText({ active, activePoints, cards, inbox, onlineCount, pending, view }) {
+  if (view === "inbox") {
+    const counts = inbox?.counts || { action: 0, updates: 0, waiting: 0 };
+    return `Inbox · ${counts.action} need admin · ${counts.waiting} waiting · ${counts.updates} updates`;
+  }
+
+  return `${contextTitle()} · ${onlineCount} online · ${pending.length} pending · ${active.length} active · ${activePoints} pts · ${cards.length} cards`;
+}
+
 function roleLabel(role) {
   const labels = {
     admin: "Admin",
@@ -918,6 +1074,7 @@ function setCardParam(id) {
 function contextTitle() {
   const filter = currentFilter();
   if (filter.view === "approvals") return "Needs Approval";
+  if (filter.view === "inbox") return "Inbox";
   if (!state.navigation) return "Board";
 
   if (filter.feature) {
