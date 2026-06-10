@@ -1,0 +1,19 @@
+{
+  "name": "mistri",
+  "version": "0.1.0",
+  "description": "Admin-first project board for managing agent work.",
+  "private": true,
+  "type": "commonjs",
+  "bin": {
+    "mistri": "./bin/mistri.js"
+  },
+  "scripts": {
+    "mistri": "node --no-warnings ./bin/mistri.js",
+    "test": "node --no-warnings --test test/*.test.js"
+  },
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "license": "UNLICENSED"
+}
+
