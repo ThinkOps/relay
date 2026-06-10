@@ -86,6 +86,18 @@ npm run mistri -- claim 1 --role developer --agent dev-agent
 npm run mistri -- board
 ```
 
+If admin requests changes, the PM can revise the scoped fields and resubmit:
+
+```bash
+npm run mistri -- card revise 1 \
+  --ac "User can request a reset email" \
+  --ac "Expired and invalid tokens are rejected" \
+  --done "Flow works and tests cover valid, expired, and invalid tokens" \
+  --note "Added the edge cases requested by admin" \
+  --submit \
+  --actor pm-agent
+```
+
 Run the UI:
 
 ```bash
@@ -178,6 +190,7 @@ npm run mistri -- feature list --project "Mistri"
 npm run mistri -- card list
 npm run mistri -- card show 1
 npm run mistri -- db
+npm run mistri -- card revise 1 --ac "Updated criterion" --note "Addressed admin feedback" --submit
 npm run mistri -- admin changes 1 --reason "Acceptance criteria are too vague"
 npm run mistri -- admin reject 1 --reason "Not a priority"
 npm run mistri -- move 1 review --role developer

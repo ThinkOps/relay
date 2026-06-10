@@ -382,6 +382,43 @@ function createStore(dbPath) {
     return getCardById(id);
   }
 
+  function updateCardScope(id, input) {
+    const updatedAt = now();
+    db.prepare(`
+      UPDATE cards
+      SET
+        title = ?,
+        user_story = ?,
+        problem_statement = ?,
+        acceptance_criteria = ?,
+        definition_of_done = ?,
+        target_repo = ?,
+        expected_role = ?,
+        risk_level = ?,
+        story_points = ?,
+        sprint = ?,
+        priority = ?,
+        updated_at = ?
+      WHERE id = ?
+    `).run(
+      input.title,
+      input.userStory,
+      input.problemStatement,
+      JSON.stringify(input.acceptanceCriteria),
+      input.definitionOfDone,
+      input.targetRepo,
+      input.expectedRole,
+      input.riskLevel,
+      input.storyPoints,
+      input.sprint,
+      input.priority,
+      updatedAt,
+      id,
+    );
+
+    return getCardById(id);
+  }
+
   function addEvent(input) {
     const result = db
       .prepare(`
@@ -430,6 +467,7 @@ function createStore(dbPath) {
     listFeatures,
     listProjects,
     updateCardLinks,
+    updateCardScope,
     updateCardState,
   };
 }

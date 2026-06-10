@@ -98,6 +98,88 @@ test("admin can request changes with an event trail", () => {
   app.close();
 });
 
+test("pm can revise a needs-changes card and resubmit it", () => {
+  const app = seededApp();
+  const card = app.createCard({
+    project: "Mobile App",
+    feature: "Login Revamp",
+    title: "Clarify reset scope",
+    problemStatement: "Scope is unclear.",
+    acceptanceCriteria: "PM writes edge cases",
+    definitionOfDone: "Admin can approve after edge cases are added.",
+    targetRepo: "git@example.com:mobile/app.git",
+    expectedRole: "developer",
+    riskLevel: "low",
+    actor: "pm-agent",
+    role: "pm",
+  });
+
+  app.submitCard(card.id, { actor: "pm-agent", role: "pm" });
+  app.requestChanges(card.id, {
+    actor: "aditya",
+    role: "admin",
+    reason: "Add token expiry and invalid token behavior.",
+  });
+
+  const revised = app.reviseCard(card.id, {
+    actor: "pm-agent",
+    role: "pm",
+    acceptanceCriteria: ["PM writes edge cases", "Expired tokens are rejected"],
+    definitionOfDone: "Admin can approve after expiry and invalid-token behavior are specified.",
+    storyPoints: 3,
+    message: "Added expiry and invalid-token criteria.",
+    submit: true,
+  });
+  const detail = app.getCard(card.id);
+  const revisedEvent = detail.events.find((event) => event.action === "card.revised");
+
+  assert.equal(revised.status, "pending_approval");
+  assert.equal(revised.approvalStatus, "pending");
+  assert.deepEqual(revised.acceptanceCriteria, ["PM writes edge cases", "Expired tokens are rejected"]);
+  assert.equal(revised.storyPoints, 3);
+  assert.equal(revisedEvent.message, "Added expiry and invalid-token criteria.");
+  assert.deepEqual(revisedEvent.metadata.revisedFields, [
+    "acceptanceCriteria",
+    "definitionOfDone",
+    "storyPoints",
+  ]);
+  assert.equal(detail.events.at(-1).action, "card.submitted");
+
+  app.close();
+});
+
+test("approved cards cannot be revised silently", () => {
+  const app = seededApp();
+  const card = app.createCard({
+    project: "Mobile App",
+    feature: "Login Revamp",
+    title: "Ship reset tests",
+    problemStatement: "Reset flow needs verification.",
+    acceptanceCriteria: "Tests cover happy and failure paths",
+    definitionOfDone: "Admin sees passing tester notes.",
+    targetRepo: "git@example.com:mobile/app.git",
+    expectedRole: "developer",
+    riskLevel: "high",
+    actor: "pm-agent",
+    role: "pm",
+  });
+
+  app.submitCard(card.id, { actor: "pm-agent", role: "pm" });
+  app.approveCard(card.id, { actor: "aditya", role: "admin" });
+
+  assert.throws(
+    () =>
+      app.reviseCard(card.id, {
+        actor: "pm-agent",
+        role: "pm",
+        acceptanceCriteria: "Changed after approval",
+      }),
+    /Only draft or needs-changes cards can be revised/,
+  );
+
+  app.close();
+});
+
 test("only admin can mark cards done", () => {
   const app = seededApp();
   const card = app.createCard({

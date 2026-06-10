@@ -129,6 +129,26 @@ function dispatch(app, env, parsed, area, action, rest) {
       return app.submitCard(one(rest, "Card id"), { actor, role: flags.role || "pm" });
     }
 
+    if (action === "revise") {
+      return app.reviseCard(one(rest, "Card id"), {
+        title: flags.title,
+        userStory: flags.story,
+        problemStatement: flags.problem,
+        acceptanceCriteria: flags.ac !== undefined ? flags.ac : flags.acceptance,
+        definitionOfDone: flags.done,
+        targetRepo: flags.repo,
+        expectedRole: flags.expectedRole || flags.role,
+        riskLevel: flags.risk,
+        storyPoints: flags.points,
+        sprint: flags.sprint,
+        priority: flags.priority,
+        message: flags.note || flags.message,
+        submit: flags.submit === true,
+        actor,
+        role: flags.actorRole || "pm",
+      });
+    }
+
     if (action === "show") {
       return app.getCard(one(rest, "Card id"));
     }
@@ -330,6 +350,7 @@ Usage:
   mistri feature create "Login Revamp" --project "Mobile App" [--summary "..."]
   mistri card create --project "Mobile App" --feature "Login Revamp" --title "Add reset" --story "As a user..." --problem "..." --ac "..." --done "..." --points 3 --sprint "Sprint 1"
   mistri card submit 1
+  mistri card revise 1 --ac "Updated criterion" --note "Addressed admin feedback" [--submit]
   mistri card show 1
   mistri card list [--status pending_approval]
   mistri admin approve 1

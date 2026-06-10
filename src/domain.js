@@ -100,6 +100,50 @@ function createMistri({ dbPath, cwd = process.cwd() }) {
     return updated;
   }
 
+  function reviseCard(id, input = {}) {
+    const card = requireCard(id);
+    assertRole(input.role || "pm", ["pm", "admin"], "Only PM or admin can revise cards.");
+    assertStatus(card.status, ["draft", "needs_changes"], "Only draft or needs-changes cards can be revised.");
+
+    const revisedFields = revisionFields(input);
+    const message = optionalText(input.message || input.note);
+    if (revisedFields.length === 0 && !message) {
+      throw new Error("At least one revised field or note is required.");
+    }
+
+    const updated = store.updateCardScope(card.id, {
+      title: valueOrCurrent(input.title, card.title, (value) => requiredText(value, "Card title")),
+      userStory: valueOrCurrent(input.userStory, card.userStory, optionalText),
+      problemStatement: valueOrCurrent(input.problemStatement, card.problemStatement, (value) =>
+        requiredText(value, "Problem statement"),
+      ),
+      acceptanceCriteria: Object.hasOwn(input, "acceptanceCriteria")
+        ? acceptanceCriteria(input.acceptanceCriteria)
+        : card.acceptanceCriteria,
+      definitionOfDone: valueOrCurrent(input.definitionOfDone, card.definitionOfDone, (value) =>
+        requiredText(value, "Definition of done"),
+      ),
+      targetRepo: valueOrCurrent(input.targetRepo, card.targetRepo, (value) => requiredText(value, "Target repo")),
+      expectedRole: valueOrCurrent(input.expectedRole, card.expectedRole, role),
+      riskLevel: valueOrCurrent(input.riskLevel, card.riskLevel, (value) =>
+        enumValue(value, RISK_LEVELS, "Risk level"),
+      ),
+      storyPoints: valueOrCurrent(input.storyPoints, card.storyPoints, storyPoints),
+      sprint: valueOrCurrent(input.sprint, card.sprint, optionalText),
+      priority: valueOrCurrent(input.priority, card.priority, priority),
+    });
+
+    event(updated.id, input, "card.revised", message || `Revised ${revisedFields.join(", ")}`, {
+      revisedFields,
+    });
+
+    if (input.submit) {
+      return submitCard(updated.id, { actor: input.actor, role: input.role || "pm" });
+    }
+
+    return updated;
+  }
+
   function approveCard(id, input = {}) {
     const card = requireCard(id);
     assertAdmin(input.role);
@@ -295,14 +339,14 @@ function createMistri({ dbPath, cwd = process.cwd() }) {
     return card;
   }
 
-  function event(cardId, input, action, message) {
+  function event(cardId, input, action, message, metadata) {
     return store.addEvent({
       cardId,
       actor: actor(input.actor),
       role: role(input.role || "admin"),
       action,
       message,
-      metadata: input.metadata || {},
+      metadata: metadata || input.metadata || {},
     });
   }
 
@@ -326,6 +370,7 @@ function createMistri({ dbPath, cwd = process.cwd() }) {
     pauseCard,
     rejectCard,
     requestChanges,
+    reviseCard,
     submitCard,
   };
 }
@@ -389,6 +434,29 @@ function storyPoints(value) {
     throw new Error("Story points must be an integer from 0 to 100.");
   }
   return number;
+}
+
+function valueOrCurrent(value, current, normalize) {
+  if (value === undefined) return current;
+  return normalize(value);
+}
+
+function revisionFields(input) {
+  return [
+    ["title", "title"],
+    ["userStory", "story"],
+    ["problemStatement", "problem"],
+    ["acceptanceCriteria", "acceptanceCriteria"],
+    ["definitionOfDone", "definitionOfDone"],
+    ["targetRepo", "targetRepo"],
+    ["expectedRole", "expectedRole"],
+    ["riskLevel", "riskLevel"],
+    ["storyPoints", "storyPoints"],
+    ["sprint", "sprint"],
+    ["priority", "priority"],
+  ]
+    .filter(([key]) => Object.hasOwn(input, key))
+    .map(([, label]) => label);
 }
 
 function assertRole(value, allowed, message) {
