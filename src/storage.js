@@ -1,5 +1,8 @@
 const fs = require("node:fs");
 const { DatabaseSync } = require("node:sqlite");
+const { CARD_STATUSES } = require("./constants");
+
+const CARD_STATUS_ORDER_SQL = CARD_STATUSES.map((status, index) => `WHEN '${status}' THEN ${index}`).join("\n            ");
 
 function openDatabase(dbPath) {
   fs.mkdirSync(require("node:path").dirname(dbPath), { recursive: true });
@@ -457,14 +460,8 @@ function createStore(dbPath) {
         ${where}
         ORDER BY
           CASE cards.status
-            WHEN 'pending_approval' THEN 0
-            WHEN 'needs_changes' THEN 1
-            WHEN 'ready' THEN 2
-            WHEN 'in_progress' THEN 3
-            WHEN 'review' THEN 4
-            WHEN 'testing' THEN 5
-            WHEN 'done' THEN 6
-            ELSE 7
+            ${CARD_STATUS_ORDER_SQL}
+            ELSE ${CARD_STATUSES.length}
           END,
           cards.priority ASC,
           cards.updated_at DESC
