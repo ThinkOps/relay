@@ -1,4 +1,5 @@
 const fs = require("node:fs");
+const path = require("node:path");
 const { CARD_STATUSES, WIP_LIMITS } = require("./constants");
 const { createRelay } = require("./domain");
 const { requireWorkspace, workspaceForInit } = require("./paths");
@@ -45,7 +46,7 @@ async function runCli(argv = process.argv.slice(2), env = process.env, cwd = pro
   const app = createRelay({ dbPath: workspace.dbPath, cwd });
 
   try {
-    const result = dispatch(app, env, parsed, area, action, rest);
+    const result = dispatch(app, env, parsed, area, action, rest, cwd);
     if (result !== undefined) print(result, parsed.flags.json);
   } finally {
     app.close();
@@ -66,7 +67,7 @@ function waitForShutdown(app) {
   });
 }
 
-function dispatch(app, env, parsed, area, action, rest) {
+function dispatch(app, env, parsed, area, action, rest, cwd) {
   const flags = parsed.flags;
   const actor = flags.actor || env.USER || "unknown";
 
@@ -206,6 +207,44 @@ function dispatch(app, env, parsed, area, action, rest) {
     return app.briefCard(action, {
       role: requiredFlag(flags, "role"),
     });
+  }
+
+  if (area === "context") {
+    if (action === "add") {
+      return app.addContextLayer({
+        project: flags.project,
+        feature: flags.feature,
+        card: flags.card,
+        type: requiredFlag(flags, "type"),
+        title: requiredFlag(flags, "title"),
+        body: readBody(flags, cwd),
+        actor,
+        role: flags.role || "developer",
+      });
+    }
+
+    if (action === "list") {
+      return app.listContextLayers({
+        project: flags.project,
+        feature: flags.feature,
+        card: flags.card,
+        type: flags.type,
+        includeSuperseded: flags.all === true,
+      });
+    }
+
+    if (action === "show") {
+      return app.getContextLayer(one(rest, "Layer id"));
+    }
+
+    if (action === "supersede") {
+      return app.supersedeContextLayer(one(rest, "Layer id"), {
+        title: flags.title,
+        body: readBody(flags, cwd),
+        actor,
+        role: flags.role || "developer",
+      });
+    }
   }
 
   if (area === "admin") {
@@ -456,6 +495,24 @@ function requiredFlag(flags, key) {
   return flags[key];
 }
 
+function readBody(flags, cwd) {
+  const hasBody = flags.body !== undefined;
+  const hasBodyFile = flags["body-file"] !== undefined;
+
+  if (Number(hasBody) + Number(hasBodyFile) !== 1) {
+    throw new Error("Exactly one of --body or --body-file is required.");
+  }
+
+  if (hasBody) {
+    if (flags.body === true) throw new Error("--body requires text or -.");
+    if (flags.body === "-") return fs.readFileSync(0, "utf8");
+    return flags.body;
+  }
+
+  if (flags["body-file"] === true) throw new Error("--body-file requires a path.");
+  return fs.readFileSync(path.resolve(cwd, flags["body-file"]), "utf8");
+}
+
 function inferredHeartbeatRole(area, action, flags) {
   if (area === "admin") return "admin";
   if (area === "project") return flags.role || "admin";
@@ -500,6 +557,10 @@ Common commands:
   relay card show 12 --json
   relay note 12 "Status update" --actor dev-agent --role developer
   relay link 12 --branch feature/reset --commit abc123 --pr https://...
+  relay context add --card 12 --type implementation_notes --title "Backend changes" --body-file notes.md
+  relay context list --card 12 --all --json
+  relay context show 5 --json
+  relay context supersede 5 --body - --title "Updated notes" --json
   relay agent inbox --agent dev-agent --role developer [--unread] [--json]
   relay agent ack 34 --agent dev-agent --role developer [--json]
   relay agent list --json

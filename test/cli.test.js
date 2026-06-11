@@ -1,6 +1,23 @@
 const assert = require("node:assert/strict");
+const { execFileSync, spawnSync } = require("node:child_process");
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
 const test = require("node:test");
 const { runCli } = require("../src/cli");
+const { createRelay } = require("../src/domain");
+
+function tempDir() {
+  return fs.mkdtempSync(path.join(os.tmpdir(), "relay-cli-test-"));
+}
+
+function runRelay(args, options = {}) {
+  return execFileSync(process.execPath, ["bin/relay.js", ...args], {
+    cwd: process.cwd(),
+    encoding: "utf8",
+    ...options,
+  });
+}
 
 async function captureStdout(callback) {
   const lines = [];
@@ -24,4 +41,117 @@ test("help explains the agent operating loop", async () => {
   assert.match(output, /relay brief 12 --role developer --json/);
   assert.match(output, /relay agent ack 34 --agent dev-agent --role developer --json/);
   assert.match(output, /Prefer --json for machine-readable output/);
+});
+
+test("context CLI adds, lists, shows, and supersedes markdown bodies", () => {
+  const root = tempDir();
+  const dbPath = path.join(root, ".relay", "relay.db");
+  const bodyPath = path.join(root, "notes.md");
+  fs.writeFileSync(bodyPath, "## Backend changes\n- Added reset validation\n");
+
+  const app = createRelay({ dbPath, cwd: process.cwd() });
+  app.createProject({ name: "Mobile App", actor: "admin", role: "admin" });
+  app.createFeature({ project: "Mobile App", name: "Login Revamp", actor: "pm-agent", role: "pm" });
+  const card = app.createCard({
+    project: "Mobile App",
+    feature: "Login Revamp",
+    title: "Wire reset validation",
+    problemStatement: "Reset validation needs implementation notes.",
+    acceptanceCriteria: "Context CLI can write implementation notes",
+    definitionOfDone: "List and show commands return the layer.",
+    targetRepo: "git@example.com:mobile/app.git",
+    expectedRole: "developer",
+    riskLevel: "low",
+    actor: "pm-agent",
+    role: "pm",
+  });
+  app.close();
+
+  const added = JSON.parse(
+    runRelay([
+      "--db",
+      dbPath,
+      "context",
+      "add",
+      "--card",
+      String(card.id),
+      "--type",
+      "implementation_notes",
+      "--title",
+      "Backend changes",
+      "--body-file",
+      bodyPath,
+      "--actor",
+      "dev-agent",
+      "--role",
+      "developer",
+      "--json",
+    ]),
+  );
+  assert.equal(added.bodyMarkdown, "## Backend changes\n- Added reset validation");
+
+  const active = JSON.parse(runRelay(["--db", dbPath, "context", "list", "--card", String(card.id), "--json"]));
+  assert.deepEqual(
+    active.map((layer) => layer.id),
+    [added.id],
+  );
+
+  const replacement = JSON.parse(
+    runRelay(
+      [
+        "--db",
+        dbPath,
+        "context",
+        "supersede",
+        String(added.id),
+        "--title",
+        "Updated backend changes",
+        "--body",
+        "-",
+        "--actor",
+        "dev-agent",
+        "--role",
+        "developer",
+        "--json",
+      ],
+      { input: "## Updated\n- Added tests\n" },
+    ),
+  );
+  assert.equal(replacement.supersedesId, added.id);
+  assert.equal(replacement.bodyMarkdown, "## Updated\n- Added tests");
+
+  const shown = JSON.parse(runRelay(["--db", dbPath, "context", "show", String(added.id), "--json"]));
+  assert.equal(shown.supersededById, replacement.id);
+
+  const all = JSON.parse(
+    runRelay(["--db", dbPath, "context", "list", "--card", String(card.id), "--all", "--json"]),
+  );
+  assert.deepEqual(
+    all.map((layer) => layer.id),
+    [replacement.id, added.id],
+  );
+
+  const invalid = spawnSync(
+    process.execPath,
+    [
+      "bin/relay.js",
+      "--db",
+      dbPath,
+      "context",
+      "add",
+      "--card",
+      String(card.id),
+      "--type",
+      "implementation_notes",
+      "--title",
+      "Invalid body source",
+      "--body",
+      "inline",
+      "--body-file",
+      bodyPath,
+    ],
+    { cwd: process.cwd(), encoding: "utf8" },
+  );
+  assert.notEqual(invalid.status, 0);
+  assert.match(invalid.stderr, /Exactly one of --body or --body-file is required/);
 });
