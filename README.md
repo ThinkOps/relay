@@ -13,6 +13,7 @@ The first version is intentionally small:
 - Agent presence: recent CLI activity/heartbeats show who is online
 - Project and feature side navigation for filtered kanban boards
 - Append-only event trail for card activity
+- Context layers and bounded briefs for agent handoffs
 - Git repo metadata captured when cards are created
 
 ## Stack
@@ -68,6 +69,8 @@ relay agent ack 12 --agent dev-agent --role developer
 ```
 
 Notifications are created from card events. Admin comments, admin decisions, reviewer/tester send-backs, PM revisions on assigned cards, and `@agent-name` mentions all route back to the relevant agent or role.
+
+For copy-pasteable agent harness instructions, see [docs/agent-loop.md](docs/agent-loop.md).
 
 Create a scoped card:
 
@@ -218,15 +221,19 @@ npm run relay -- project list
 npm run relay -- feature list --project "Relay"
 npm run relay -- card list
 npm run relay -- card show 1
+npm run relay -- brief 1 --role developer --json
 npm run relay -- db
 npm run relay -- card revise 1 --ac "Updated criterion" --note "Addressed admin feedback" --submit
 npm run relay -- agent heartbeat --role developer --agent dev-agent
 npm run relay -- agent list
 npm run relay -- admin changes 1 --reason "Acceptance criteria are too vague"
 npm run relay -- admin reject 1 --reason "Not a priority"
-npm run relay -- move 1 review --role developer
+npm run relay -- move 1 review --role developer --handoff-file handoff.md
 npm run relay -- note 1 "Implemented reset token flow" --role developer
 npm run relay -- note 1 $'## Review findings\n- Missing error path\n- Add integration test' --role reviewer
+npm run relay -- context add --card 1 --type implementation_notes --title "Backend changes" --body-file notes.md
+npm run relay -- context list --card 1 --json
+npm run relay -- context supersede 2 --body - --title "Updated notes" --json
 npm run relay -- agent inbox --agent dev-agent --role developer --unread
 npm run relay -- agent ack 12 --agent dev-agent --role developer
 ```
@@ -246,6 +253,8 @@ Use `RELAY_DB` or `--db` whenever a command is run outside the control workspace
 - The UI uses `textContent` for rendered data.
 - Security headers disable framing, MIME sniffing, broad script sources, and caching.
 - Do not commit `.relay/`; it contains local project state.
+
+Relay is a coordination protocol, not a security boundary. Roles are self-declared by CLI/API callers, and any process with database access can perform any action. The control loop is admin visibility through the inbox, board, event trail, and context gaps.
 
 ## Tests
 
