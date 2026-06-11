@@ -1,15 +1,15 @@
 {
-  "name": "mistri",
+  "name": "relay",
   "version": "0.1.0",
   "description": "Admin-first project board for managing agent work.",
   "private": true,
   "type": "commonjs",
   "bin": {
-    "mistri": "./bin/mistri.js"
+    "relay": "./bin/relay.js"
   },
   "scripts": {
-    "mistri": "node --no-warnings ./bin/mistri.js",
-    "ui": "node --no-warnings ./bin/mistri.js ui",
+    "relay": "node --no-warnings ./bin/relay.js",
+    "ui": "node --no-warnings ./bin/relay.js ui",
     "test": "node --no-warnings --test test/*.test.js"
   },
   "engines": {

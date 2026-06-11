@@ -2,7 +2,7 @@ const { APPROVAL_STATUSES, CARD_STATUSES, FEATURE_STATUSES, RISK_LEVELS, ROLES }
 const { readGitMetadata } = require("./git");
 const { createStore } = require("./storage");
 
-function createMistri({ dbPath, cwd = process.cwd() }) {
+function createRelay({ dbPath, cwd = process.cwd() }) {
   const store = createStore(dbPath);
   const ONLINE_WINDOW_MS = 5 * 60 * 1000;
 
@@ -654,5 +654,5 @@ function assertMove(current, next, actingRole) {
 }
 
 module.exports = {
-  createMistri,
+  createRelay,
 };

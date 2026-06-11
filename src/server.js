@@ -2,7 +2,7 @@ const crypto = require("node:crypto");
 const fs = require("node:fs/promises");
 const http = require("node:http");
 const path = require("node:path");
-const { createMistri } = require("./domain");
+const { createRelay } = require("./domain");
 
 const WEB_ROOT = path.join(__dirname, "..", "web");
 const STATIC_FILES = {
@@ -34,7 +34,7 @@ async function handleRequest({ request, response, dbPath, cwd, token }) {
   const url = new URL(request.url, "http://localhost");
 
   if (request.method === "GET" && url.pathname === "/config.js") {
-    send(response, 200, `window.MISTRI_CONFIG = ${JSON.stringify({ token })};\n`, "text/javascript; charset=utf-8");
+    send(response, 200, `window.RELAY_CONFIG = ${JSON.stringify({ token })};\n`, "text/javascript; charset=utf-8");
     return;
   }
 
@@ -59,12 +59,12 @@ async function handleRequest({ request, response, dbPath, cwd, token }) {
 }
 
 async function handleApi({ request, response, url, dbPath, cwd, token }) {
-  if (request.method !== "GET" && request.headers["x-mistri-token"] !== token) {
+  if (request.method !== "GET" && request.headers["x-relay-token"] !== token) {
     sendJson(response, 403, { error: "Invalid request token." });
     return;
   }
 
-  const app = createMistri({ dbPath, cwd });
+  const app = createRelay({ dbPath, cwd });
   try {
     const parts = url.pathname.split("/").filter(Boolean);
 

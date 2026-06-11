@@ -1,14 +1,16 @@
 const fs = require("node:fs");
 const path = require("node:path");
 
-const MISTRI_DIR = ".mistri";
-const DB_FILE = "mistri.db";
+const RELAY_DIR = ".relay";
+const LEGACY_DIR = ".mistri";
+const DB_FILE = "relay.db";
+const LEGACY_DB_FILE = "mistri.db";
 
 function workspaceFromDbPath(dbPath) {
   const resolved = path.resolve(dbPath);
   return {
     root: path.dirname(path.dirname(resolved)),
-    mistriDir: path.dirname(resolved),
+    relayDir: path.dirname(resolved),
     dbPath: resolved,
   };
 }
@@ -22,12 +24,21 @@ function findWorkspace(startDir = process.cwd(), dbPath) {
   let current = path.resolve(startDir);
 
   while (true) {
-    const dbPath = path.join(current, MISTRI_DIR, DB_FILE);
+    const dbPath = path.join(current, RELAY_DIR, DB_FILE);
     if (fs.existsSync(dbPath)) {
       return {
         root: current,
-        mistriDir: path.join(current, MISTRI_DIR),
+        relayDir: path.join(current, RELAY_DIR),
         dbPath,
+      };
+    }
+
+    const legacyDbPath = path.join(current, LEGACY_DIR, LEGACY_DB_FILE);
+    if (fs.existsSync(legacyDbPath)) {
+      return {
+        root: current,
+        relayDir: path.join(current, LEGACY_DIR),
+        dbPath: legacyDbPath,
       };
     }
 
@@ -45,8 +56,8 @@ function workspaceForInit(cwd = process.cwd(), dbPath) {
   const root = path.resolve(cwd);
   return {
     root,
-    mistriDir: path.join(root, MISTRI_DIR),
-    dbPath: path.join(root, MISTRI_DIR, DB_FILE),
+    relayDir: path.join(root, RELAY_DIR),
+    dbPath: path.join(root, RELAY_DIR, DB_FILE),
   };
 }
 
@@ -54,16 +65,18 @@ function requireWorkspace(cwd = process.cwd(), dbPath) {
   const workspace = findWorkspace(cwd, dbPath);
   if (!workspace) {
     if (dbPath) {
-      throw new Error(`Mistri database not found at ${path.resolve(dbPath)}. Run \`mistri init --db ${path.resolve(dbPath)}\` first.`);
+      throw new Error(`Relay database not found at ${path.resolve(dbPath)}. Run \`relay init --db ${path.resolve(dbPath)}\` first.`);
     }
-    throw new Error("No Mistri workspace found. Run `mistri init` first.");
+    throw new Error("No Relay workspace found. Run `relay init` first.");
   }
   return workspace;
 }
 
 module.exports = {
-  MISTRI_DIR,
+  RELAY_DIR,
   DB_FILE,
+  LEGACY_DIR,
+  LEGACY_DB_FILE,
   findWorkspace,
   requireWorkspace,
   workspaceFromDbPath,

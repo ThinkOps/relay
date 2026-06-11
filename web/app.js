@@ -579,8 +579,8 @@ async function addCardNote(id, form) {
 
   if (!message) return;
 
-  window.localStorage.setItem("mistri.actor", actor);
-  window.localStorage.setItem("mistri.role", role);
+  window.localStorage.setItem("relay.actor", actor);
+  window.localStorage.setItem("relay.role", role);
 
   await request(`/api/note/${id}`, {
     method: "POST",
@@ -595,7 +595,7 @@ async function request(path, options = {}) {
     ...options,
     headers: {
       "Content-Type": "application/json",
-      "X-Mistri-Token": window.MISTRI_CONFIG.token,
+      "X-Relay-Token": window.RELAY_CONFIG.token,
       ...(options.headers || {}),
     },
   });
@@ -623,8 +623,8 @@ function listBlock(title, values) {
 }
 
 function noteForm(card) {
-  const savedActor = window.localStorage.getItem("mistri.actor") || "admin";
-  const savedRole = window.localStorage.getItem("mistri.role") || "admin";
+  const savedActor = window.localStorage.getItem("relay.actor") || "admin";
+  const savedRole = window.localStorage.getItem("relay.role") || "admin";
   const form = el("form", "note-form");
   form.addEventListener("submit", (event) => {
     event.preventDefault();

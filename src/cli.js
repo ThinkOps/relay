@@ -1,6 +1,6 @@
 const fs = require("node:fs");
 const { CARD_STATUSES, WIP_LIMITS } = require("./constants");
-const { createMistri } = require("./domain");
+const { createRelay } = require("./domain");
 const { requireWorkspace, workspaceForInit } = require("./paths");
 const { startServer } = require("./server");
 
@@ -13,14 +13,14 @@ async function runCli(argv = process.argv.slice(2), env = process.env, cwd = pro
     return;
   }
 
-  const selectedDb = parsed.flags.db || env.MISTRI_DB;
+  const selectedDb = parsed.flags.db || env.RELAY_DB || env.MISTRI_DB;
 
   if (area === "init") {
     const workspace = workspaceForInit(cwd, selectedDb);
-    fs.mkdirSync(workspace.mistriDir, { recursive: true });
-    const app = createMistri({ dbPath: workspace.dbPath, cwd });
+    fs.mkdirSync(workspace.relayDir, { recursive: true });
+    const app = createRelay({ dbPath: workspace.dbPath, cwd });
     app.close();
-    print({ message: `Initialized Mistri at ${workspace.dbPath}` }, parsed.flags.json);
+    print({ message: `Initialized Relay at ${workspace.dbPath}` }, parsed.flags.json);
     return;
   }
 
@@ -37,12 +37,12 @@ async function runCli(argv = process.argv.slice(2), env = process.env, cwd = pro
       cwd,
       port: parsed.flags.port || 4173,
     });
-    console.log(`Mistri UI running at ${app.url}`);
+    console.log(`Relay UI running at ${app.url}`);
     await waitForShutdown(app);
     return;
   }
 
-  const app = createMistri({ dbPath: workspace.dbPath, cwd });
+  const app = createRelay({ dbPath: workspace.dbPath, cwd });
 
   try {
     const result = dispatch(app, env, parsed, area, action, rest);
@@ -252,7 +252,7 @@ function dispatch(app, env, parsed, area, action, rest) {
     return app.board();
   }
 
-  throw new Error(`Unknown command. Run \`mistri help\` for usage.`);
+  throw new Error(`Unknown command. Run \`relay help\` for usage.`);
 }
 
 function parseArgv(argv) {
@@ -422,25 +422,25 @@ function inferredHeartbeatRole(area, action, flags) {
 }
 
 function printHelp() {
-  console.log(`Mistri - admin-first project board for agent work
+  console.log(`Relay - admin-first project board for agent work
 
 Agent contract:
-  Use one shared Mistri DB. Do not run mistri init inside every agent worktree.
+  Use one shared Relay DB. Do not run relay init inside every agent worktree.
   Prefer --json for machine-readable output.
   Check your inbox before work, after handoffs, and while waiting for feedback.
   Acknowledge notifications only after you have handled them.
   Post Markdown notes for progress, blockers, review findings, and QA evidence.
 
 Agent loop:
-  export MISTRI_DB=/path/to/control/.mistri/mistri.db
-  mistri db --json
-  mistri agent heartbeat --agent dev-agent --role developer --json
-  mistri agent inbox --agent dev-agent --role developer --unread --json
-  mistri card show 12 --json
-  mistri claim 12 --agent dev-agent --role developer --json
-  mistri note 12 $'## Progress\\n- Implemented core path\\n- Tests pending' --actor dev-agent --role developer
-  mistri move 12 review --actor dev-agent --role developer --json
-  mistri agent ack 34 --agent dev-agent --role developer --json
+  export RELAY_DB=/path/to/control/.relay/relay.db
+  relay db --json
+  relay agent heartbeat --agent dev-agent --role developer --json
+  relay agent inbox --agent dev-agent --role developer --unread --json
+  relay card show 12 --json
+  relay claim 12 --agent dev-agent --role developer --json
+  relay note 12 $'## Progress\\n- Implemented core path\\n- Tests pending' --actor dev-agent --role developer
+  relay move 12 review --actor dev-agent --role developer --json
+  relay agent ack 34 --agent dev-agent --role developer --json
 
 Role handoffs:
   developer: claim ready cards, post progress, move in_progress -> review
@@ -450,32 +450,32 @@ Role handoffs:
   admin: approve, request changes, reject, pause, cancel, mark done
 
 Common commands:
-  mistri board --json
-  mistri card list [--status pending_approval] [--json]
-  mistri card show 12 --json
-  mistri note 12 "Status update" --actor dev-agent --role developer
-  mistri link 12 --branch feature/reset --commit abc123 --pr https://...
-  mistri agent inbox --agent dev-agent --role developer [--unread] [--json]
-  mistri agent ack 34 --agent dev-agent --role developer [--json]
-  mistri agent list --json
+  relay board --json
+  relay card list [--status pending_approval] [--json]
+  relay card show 12 --json
+  relay note 12 "Status update" --actor dev-agent --role developer
+  relay link 12 --branch feature/reset --commit abc123 --pr https://...
+  relay agent inbox --agent dev-agent --role developer [--unread] [--json]
+  relay agent ack 34 --agent dev-agent --role developer [--json]
+  relay agent list --json
 
 PM scope commands:
-  mistri project create "Mobile App" [--description "..."]
-  mistri feature create "Login Revamp" --project "Mobile App" [--summary "..."]
-  mistri card create --project "Mobile App" --feature "Login Revamp" --title "Add reset" --story "As a user..." --problem "..." --ac "..." --done "..." --points 3 --sprint "Sprint 1" --role developer
-  mistri card submit 12 --actor pm-agent
-  mistri card revise 12 --ac "Updated criterion" --note "Addressed admin feedback" --submit
+  relay project create "Mobile App" [--description "..."]
+  relay feature create "Login Revamp" --project "Mobile App" [--summary "..."]
+  relay card create --project "Mobile App" --feature "Login Revamp" --title "Add reset" --story "As a user..." --problem "..." --ac "..." --done "..." --points 3 --sprint "Sprint 1" --role developer
+  relay card submit 12 --actor pm-agent
+  relay card revise 12 --ac "Updated criterion" --note "Addressed admin feedback" --submit
 
 Admin commands:
-  mistri admin approve 12 --actor admin
-  mistri admin changes 12 --reason "Acceptance criteria too vague" --actor admin
-  mistri admin reject 12 --reason "Not a priority" --actor admin
-  mistri admin done 12 --actor admin
+  relay admin approve 12 --actor admin
+  relay admin changes 12 --reason "Acceptance criteria too vague" --actor admin
+  relay admin reject 12 --reason "Not a priority" --actor admin
+  relay admin done 12 --actor admin
 
 Workspace commands:
-  mistri init
-  mistri db
-  mistri ui [--port 4173]
+  relay init
+  relay db
+  relay ui [--port 4173]
 
 Global flags:
   --actor name     event actor; defaults to $USER
@@ -485,7 +485,8 @@ Global flags:
   --json           machine-readable output
 
 Environment:
-  MISTRI_DB=/path/to/control/.mistri/mistri.db
+  RELAY_DB=/path/to/control/.relay/relay.db
+  MISTRI_DB is still accepted as a legacy fallback.
 `);
 }
 

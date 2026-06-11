@@ -1,12 +1,12 @@
-# Mistri
+# Relay
 
-Mistri is an admin-first project board for managing agent work. PM agents can propose scoped work, but execution starts only after admin approval.
+Relay is an admin-first project board for managing agent work. PM agents can propose scoped work, but execution starts only after admin approval.
 
 The first version is intentionally small:
 
 - CLI-first workflow
 - Local web board UI
-- SQLite database at `.mistri/mistri.db`, with `MISTRI_DB` support for a shared control database
+- SQLite database at `.relay/relay.db`, with `RELAY_DB` support for a shared control database
 - Required acceptance criteria before a card can be submitted
 - Agile-inspired card fields: user story, story points, sprint label, acceptance criteria, definition of done
 - WIP limits surfaced on the board for ready, in-progress, review, and QA
@@ -28,43 +28,43 @@ There are no runtime npm dependencies in v0. The API boundary is the seam where 
 ## Quickstart
 
 ```bash
-npm run mistri -- init
-npm run mistri -- project create "Mistri"
-npm run mistri -- feature create "Agent Work Control" --project "Mistri"
+npm run relay -- init
+npm run relay -- project create "Relay"
+npm run relay -- feature create "Agent Work Control" --project "Relay"
 ```
 
 ## Shared Agent Setup
 
-Mistri should have one control database for the admin board. Do not let each agent initialize its own database inside its own repo unless you are only doing a local experiment.
+Relay should have one control database for the admin board. Do not let each agent initialize its own database inside its own repo unless you are only doing a local experiment.
 
 Create the control database once:
 
 ```bash
 cd /Users/adityachowdhry/work/project-manager
-mistri init
-mistri db
+relay init
+relay db
 ```
 
 Agents working from other repositories should point at that same database:
 
 ```bash
-export MISTRI_DB=/Users/adityachowdhry/work/project-manager/.mistri/mistri.db
-mistri db
+export RELAY_DB=/Users/adityachowdhry/work/project-manager/.relay/relay.db
+relay db
 ```
 
 For one command:
 
 ```bash
-mistri --db /Users/adityachowdhry/work/project-manager/.mistri/mistri.db card show 1 --json
+relay --db /Users/adityachowdhry/work/project-manager/.relay/relay.db card show 1 --json
 ```
 
-When an agent creates a project/card from a target repo, Mistri still captures that repo’s git metadata, but stores the work in the shared control database.
+When an agent creates a project/card from a target repo, Relay still captures that repo’s git metadata, but stores the work in the shared control database.
 
 Agents should poll their inbox before starting work and whenever they are waiting for feedback:
 
 ```bash
-mistri agent inbox --agent dev-agent --role developer --unread --json
-mistri agent ack 12 --agent dev-agent --role developer
+relay agent inbox --agent dev-agent --role developer --unread --json
+relay agent ack 12 --agent dev-agent --role developer
 ```
 
 Notifications are created from card events. Admin comments, admin decisions, reviewer/tester send-backs, PM revisions on assigned cards, and `@agent-name` mentions all route back to the relevant agent or role.
@@ -72,8 +72,8 @@ Notifications are created from card events. Admin comments, admin decisions, rev
 Create a scoped card:
 
 ```bash
-npm run mistri -- card create \
-  --project "Mistri" \
+npm run relay -- card create \
+  --project "Relay" \
   --feature "Agent Work Control" \
   --title "Build approval-gated CLI" \
   --story "As an admin, I want to approve scoped work before agents start so project execution stays controlled" \
@@ -90,17 +90,17 @@ npm run mistri -- card create \
 Submit and approve it:
 
 ```bash
-npm run mistri -- card submit 1 --actor pm-agent
-npm run mistri -- admin approve 1 --actor aditya
-npm run mistri -- claim 1 --role developer --agent dev-agent
-npm run mistri -- agent list
-npm run mistri -- board
+npm run relay -- card submit 1 --actor pm-agent
+npm run relay -- admin approve 1 --actor aditya
+npm run relay -- claim 1 --role developer --agent dev-agent
+npm run relay -- agent list
+npm run relay -- board
 ```
 
 If admin requests changes, the PM can revise the scoped fields and resubmit:
 
 ```bash
-npm run mistri -- card revise 1 \
+npm run relay -- card revise 1 \
   --ac "User can request a reset email" \
   --ac "Expired and invalid tokens are rejected" \
   --done "Flow works and tests cover valid, expired, and invalid tokens" \
@@ -145,13 +145,13 @@ The filters are URL-based:
 The top summary shows how many agents are online. Agents are considered online when they have recent CLI activity or send an explicit heartbeat:
 
 ```bash
-npm run mistri -- agent heartbeat --role developer --agent dev-agent
-npm run mistri -- agent list --json
+npm run relay -- agent heartbeat --role developer --agent dev-agent
+npm run relay -- agent list --json
 ```
 
 Cards show a small ownership tag. Claimed cards show the agent name with an online/offline dot; unclaimed cards show the expected role needed for the work.
 
-The Inbox is derived from the same append-only event trail as the card timeline. It does not have persistent read or archive state yet; it is a live triage view over current admin actions and recent agent updates.
+The admin Inbox is derived from the same append-only event trail as the card timeline. It is a live triage view over current admin actions and recent agent updates. Agent notifications have separate read/ack state through `relay agent inbox` and `relay agent ack`.
 
 Card updates and long scope fields in the UI support a safe Markdown subset: headings, paragraphs, bullet and numbered lists, blockquotes, fenced code blocks, inline code, bold, and italics. The renderer builds DOM text nodes instead of raw HTML.
 
@@ -213,29 +213,30 @@ Recommended agile fields:
 ## CLI Reference
 
 ```bash
-npm run mistri -- help
-npm run mistri -- project list
-npm run mistri -- feature list --project "Mistri"
-npm run mistri -- card list
-npm run mistri -- card show 1
-npm run mistri -- db
-npm run mistri -- card revise 1 --ac "Updated criterion" --note "Addressed admin feedback" --submit
-npm run mistri -- agent heartbeat --role developer --agent dev-agent
-npm run mistri -- agent list
-npm run mistri -- admin changes 1 --reason "Acceptance criteria are too vague"
-npm run mistri -- admin reject 1 --reason "Not a priority"
-npm run mistri -- move 1 review --role developer
-npm run mistri -- note 1 "Implemented reset token flow" --role developer
-npm run mistri -- note 1 $'## Review findings\n- Missing error path\n- Add integration test' --role reviewer
-npm run mistri -- agent inbox --agent dev-agent --role developer --unread
-npm run mistri -- agent ack 12 --agent dev-agent --role developer
+npm run relay -- help
+npm run relay -- project list
+npm run relay -- feature list --project "Relay"
+npm run relay -- card list
+npm run relay -- card show 1
+npm run relay -- db
+npm run relay -- card revise 1 --ac "Updated criterion" --note "Addressed admin feedback" --submit
+npm run relay -- agent heartbeat --role developer --agent dev-agent
+npm run relay -- agent list
+npm run relay -- admin changes 1 --reason "Acceptance criteria are too vague"
+npm run relay -- admin reject 1 --reason "Not a priority"
+npm run relay -- move 1 review --role developer
+npm run relay -- note 1 "Implemented reset token flow" --role developer
+npm run relay -- note 1 $'## Review findings\n- Missing error path\n- Add integration test' --role reviewer
+npm run relay -- agent inbox --agent dev-agent --role developer --unread
+npm run relay -- agent ack 12 --agent dev-agent --role developer
 ```
 
 Add `--json` to most commands for agent-readable output.
 
 Notes support Markdown. Agents can pass real multiline strings, or literal `\n` sequences when that is easier from their shell/runtime.
 
-Use `MISTRI_DB` or `--db` whenever a command is run outside the control workspace.
+Use `RELAY_DB` or `--db` whenever a command is run outside the control workspace.
+Legacy `MISTRI_DB` and `.mistri/mistri.db` workspaces are still discovered so existing shared databases can be migrated deliberately.
 
 ## Security Notes
 
@@ -245,7 +246,7 @@ Use `MISTRI_DB` or `--db` whenever a command is run outside the control workspac
 - Mutating API requests require a per-process request token.
 - The UI uses `textContent` for rendered data.
 - Security headers disable framing, MIME sniffing, broad script sources, and caching.
-- Do not commit `.mistri/`; it contains local project state.
+- Do not commit `.relay/`; it contains local project state.
 
 ## Tests
 

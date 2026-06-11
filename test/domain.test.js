@@ -3,15 +3,15 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
-const { createMistri } = require("../src/domain");
+const { createRelay } = require("../src/domain");
 
 function tempDb() {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "mistri-test-"));
-  return path.join(dir, "mistri.db");
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "relay-test-"));
+  return path.join(dir, "relay.db");
 }
 
 function seededApp() {
-  const app = createMistri({ dbPath: tempDb(), cwd: process.cwd() });
+  const app = createRelay({ dbPath: tempDb(), cwd: process.cwd() });
   app.createProject({ name: "Mobile App", actor: "admin", role: "admin" });
   app.createFeature({
     project: "Mobile App",

@@ -3,24 +3,24 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
-const { createMistri } = require("../src/domain");
+const { createRelay } = require("../src/domain");
 const { startServer } = require("../src/server");
 
 function tempDb() {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "mistri-server-test-"));
-  return path.join(dir, "mistri.db");
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "relay-server-test-"));
+  return path.join(dir, "relay.db");
 }
 
 test("server exposes board data and protects mutations with token", async () => {
   const dbPath = tempDb();
-  const app = createMistri({ dbPath, cwd: process.cwd() });
-  app.createProject({ name: "Mistri", actor: "admin", role: "admin" });
-  app.createFeature({ project: "Mistri", name: "Admin Gate", actor: "pm", role: "pm" });
-  app.createFeature({ project: "Mistri", name: "Board Views", actor: "pm", role: "pm" });
+  const app = createRelay({ dbPath, cwd: process.cwd() });
+  app.createProject({ name: "Relay", actor: "admin", role: "admin" });
+  app.createFeature({ project: "Relay", name: "Admin Gate", actor: "pm", role: "pm" });
+  app.createFeature({ project: "Relay", name: "Board Views", actor: "pm", role: "pm" });
   app.createProject({ name: "Mobile App", actor: "admin", role: "admin" });
   app.createFeature({ project: "Mobile App", name: "Login", actor: "pm", role: "pm" });
   const card = app.createCard({
-    project: "Mistri",
+    project: "Relay",
     feature: "Admin Gate",
     title: "Approve scoped work",
     problemStatement: "Admin needs to control agent execution.",
@@ -39,7 +39,7 @@ test("server exposes board data and protects mutations with token", async () => 
     feature: "Login",
     title: "Keep mobile work separate",
     problemStatement: "Project filters should not leak unrelated cards.",
-    acceptanceCriteria: "Mistri board excludes mobile cards",
+    acceptanceCriteria: "Relay board excludes mobile cards",
     definitionOfDone: "Project filter returns only matching project cards.",
     targetRepo: "local",
     expectedRole: "developer",
@@ -48,7 +48,7 @@ test("server exposes board data and protects mutations with token", async () => 
     role: "pm",
   });
   const claimedCard = app.createCard({
-    project: "Mistri",
+    project: "Relay",
     feature: "Board Views",
     title: "Show agent presence",
     problemStatement: "Admin needs to see which agent is working.",
@@ -83,13 +83,13 @@ test("server exposes board data and protects mutations with token", async () => 
 
     const navigationResponse = await fetch(`${server.url}/api/navigation`);
     const navigation = await navigationResponse.json();
-    const mistri = navigation.projects.find((project) => project.name === "Mistri");
-    const adminGate = mistri.features.find((feature) => feature.name === "Admin Gate");
+    const relay = navigation.projects.find((project) => project.name === "Relay");
+    const adminGate = relay.features.find((feature) => feature.name === "Admin Gate");
     assert.equal(navigation.counts.total, 3);
     assert.equal(navigation.onlineAgents.length, 1);
     assert.equal(navigation.onlineAgents[0].agent, "dev-agent");
     assert.equal(navigation.inboxCounts.action, 1);
-    assert.equal(mistri.counts.total, 2);
+    assert.equal(relay.counts.total, 2);
     assert.equal(adminGate.counts.pending, 1);
 
     const inboxResponse = await fetch(`${server.url}/api/inbox`);
@@ -109,7 +109,7 @@ test("server exposes board data and protects mutations with token", async () => 
     assert.equal(agents[0].activeCards.length, 1);
     assert.equal(agents[0].activeCards[0].title, "Show agent presence");
 
-    const projectBoardResponse = await fetch(`${server.url}/api/board?project=${mistri.id}`);
+    const projectBoardResponse = await fetch(`${server.url}/api/board?project=${relay.id}`);
     const projectBoard = await projectBoardResponse.json();
     assert.equal(projectBoard.pending_approval.length, 1);
     assert.equal(projectBoard.draft.length, 0);
@@ -135,7 +135,7 @@ test("server exposes board data and protects mutations with token", async () => 
       body: JSON.stringify({ actor: "admin" }),
       headers: {
         "Content-Type": "application/json",
-        "X-Mistri-Token": server.token,
+        "X-Relay-Token": server.token,
       },
     });
     const body = await approved.json();
