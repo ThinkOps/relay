@@ -272,6 +272,10 @@ function dispatch(app, env, parsed, area, action, rest, cwd) {
       actor,
       role: requiredFlag(flags, "role"),
       status: one(rest, "Status"),
+      handoff: readOptionalTextSource(flags, cwd, {
+        inlineKey: "handoff",
+        fileKey: "handoff-file",
+      }),
     });
   }
 
@@ -496,21 +500,42 @@ function requiredFlag(flags, key) {
 }
 
 function readBody(flags, cwd) {
-  const hasBody = flags.body !== undefined;
-  const hasBodyFile = flags["body-file"] !== undefined;
+  return readTextSource(flags, cwd, {
+    inlineKey: "body",
+    fileKey: "body-file",
+    required: true,
+    allowStdin: true,
+  });
+}
+
+function readOptionalTextSource(flags, cwd, options) {
+  return readTextSource(flags, cwd, { ...options, required: false });
+}
+
+function readTextSource(flags, cwd, options) {
+  const hasBody = flags[options.inlineKey] !== undefined;
+  const hasBodyFile = flags[options.fileKey] !== undefined;
+  const inlineLabel = `--${options.inlineKey}`;
+  const fileLabel = `--${options.fileKey}`;
 
   if (Number(hasBody) + Number(hasBodyFile) !== 1) {
-    throw new Error("Exactly one of --body or --body-file is required.");
+    if (options.required) {
+      throw new Error(`Exactly one of ${inlineLabel} or ${fileLabel} is required.`);
+    }
+    if (Number(hasBody) + Number(hasBodyFile) > 1) {
+      throw new Error(`Only one of ${inlineLabel} or ${fileLabel} can be provided.`);
+    }
+    return undefined;
   }
 
   if (hasBody) {
-    if (flags.body === true) throw new Error("--body requires text or -.");
-    if (flags.body === "-") return fs.readFileSync(0, "utf8");
-    return flags.body;
+    if (flags[options.inlineKey] === true) throw new Error(`${inlineLabel} requires text${options.allowStdin ? " or -" : ""}.`);
+    if (options.allowStdin && flags[options.inlineKey] === "-") return fs.readFileSync(0, "utf8");
+    return flags[options.inlineKey];
   }
 
-  if (flags["body-file"] === true) throw new Error("--body-file requires a path.");
-  return fs.readFileSync(path.resolve(cwd, flags["body-file"]), "utf8");
+  if (flags[options.fileKey] === true) throw new Error(`${fileLabel} requires a path.`);
+  return fs.readFileSync(path.resolve(cwd, flags[options.fileKey]), "utf8");
 }
 
 function inferredHeartbeatRole(area, action, flags) {
@@ -540,7 +565,7 @@ Agent loop:
   relay brief 12 --role developer --json
   relay claim 12 --agent dev-agent --role developer --json
   relay note 12 $'## Progress\\n- Implemented core path\\n- Tests pending' --actor dev-agent --role developer
-  relay move 12 review --actor dev-agent --role developer --json
+  relay move 12 review --actor dev-agent --role developer --handoff-file handoff.md --json
   relay agent ack 34 --agent dev-agent --role developer --json
 
 Role handoffs:

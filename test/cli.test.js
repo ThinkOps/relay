@@ -47,7 +47,9 @@ test("context CLI adds, lists, shows, and supersedes markdown bodies", () => {
   const root = tempDir();
   const dbPath = path.join(root, ".relay", "relay.db");
   const bodyPath = path.join(root, "notes.md");
+  const handoffPath = path.join(root, "handoff.md");
   fs.writeFileSync(bodyPath, "## Backend changes\n- Added reset validation\n");
+  fs.writeFileSync(handoffPath, "Reviewer should start with reset validation.\n");
 
   const app = createRelay({ dbPath, cwd: process.cwd() });
   app.createProject({ name: "Mobile App", actor: "admin", role: "admin" });
@@ -65,6 +67,8 @@ test("context CLI adds, lists, shows, and supersedes markdown bodies", () => {
     actor: "pm-agent",
     role: "pm",
   });
+  app.submitCard(card.id, { actor: "pm-agent", role: "pm" });
+  app.approveCard(card.id, { actor: "admin", role: "admin" });
   app.close();
 
   const added = JSON.parse(
@@ -154,4 +158,55 @@ test("context CLI adds, lists, shows, and supersedes markdown bodies", () => {
   );
   assert.notEqual(invalid.status, 0);
   assert.match(invalid.stderr, /Exactly one of --body or --body-file is required/);
+
+  const claimed = JSON.parse(
+    runRelay([
+      "--db",
+      dbPath,
+      "claim",
+      String(card.id),
+      "--actor",
+      "dev-agent",
+      "--agent",
+      "dev-agent",
+      "--role",
+      "developer",
+      "--json",
+    ]),
+  );
+  assert.equal(claimed.status, "in_progress");
+  assert.equal(claimed.brief.card.id, card.id);
+
+  const moved = JSON.parse(
+    runRelay([
+      "--db",
+      dbPath,
+      "move",
+      String(card.id),
+      "review",
+      "--actor",
+      "dev-agent",
+      "--role",
+      "developer",
+      "--handoff-file",
+      handoffPath,
+      "--json",
+    ]),
+  );
+  assert.deepEqual(moved.warnings, []);
+
+  const handoff = JSON.parse(
+    runRelay([
+      "--db",
+      dbPath,
+      "context",
+      "list",
+      "--card",
+      String(card.id),
+      "--type",
+      "handoff_intent",
+      "--json",
+    ]),
+  );
+  assert.equal(handoff[0].bodyMarkdown, "Reviewer should start with reset validation.");
 });

@@ -616,3 +616,85 @@ test("brief returns bounded card context with latest active layers", () => {
 
   app.close();
 });
+
+test("claim returns a brief and move manages handoff context with soft warnings", () => {
+  const app = seededApp();
+  const card = app.createCard({
+    project: "Mobile App",
+    feature: "Login Revamp",
+    title: "Review reset lifecycle context",
+    problemStatement: "Lifecycle handoffs need context by default.",
+    acceptanceCriteria: "Claim returns brief and move can write handoff intent",
+    definitionOfDone: "Warnings guide agents without blocking moves.",
+    targetRepo: "git@example.com:mobile/app.git",
+    expectedRole: "developer",
+    riskLevel: "medium",
+    actor: "pm-agent",
+    role: "pm",
+  });
+
+  app.submitCard(card.id, { actor: "pm-agent", role: "pm" });
+  app.approveCard(card.id, { actor: "aditya", role: "admin" });
+  const claimed = app.claimCard(card.id, {
+    actor: "dev-agent",
+    role: "developer",
+    agent: "dev-agent",
+  });
+
+  assert.equal(claimed.status, "in_progress");
+  assert.equal(claimed.brief.card.id, card.id);
+  assert.equal(claimed.brief.card.status, "in_progress");
+
+  const missingNotesMove = app.moveCard(card.id, {
+    actor: "dev-agent",
+    role: "developer",
+    status: "review",
+    handoff: "Reviewer should start with reset token expiry.",
+  });
+  const firstHandoff = app.listContextLayers({ card: card.id, type: "handoff_intent" })[0];
+
+  assert.deepEqual(missingNotesMove.warnings, [
+    `Card #${card.id} has no implementation_notes; the reviewer will lack context.`,
+  ]);
+  assert.equal(firstHandoff.bodyMarkdown, "Reviewer should start with reset token expiry.");
+
+  app.moveCard(card.id, {
+    actor: "review-agent",
+    role: "reviewer",
+    status: "in_progress",
+    handoff: "Developer should add the invalid-token test.",
+  });
+  const handoffs = app.listContextLayers({
+    card: card.id,
+    type: "handoff_intent",
+    includeSuperseded: true,
+  });
+  assert.equal(handoffs[0].supersedesId, firstHandoff.id);
+  assert.equal(handoffs[1].supersededById, handoffs[0].id);
+
+  app.addContextLayer({
+    card: card.id,
+    type: "implementation_notes",
+    title: "Implementation notes",
+    body: "Added reset token expiry handling.",
+    actor: "dev-agent",
+    role: "developer",
+  });
+  const cleanReviewMove = app.moveCard(card.id, {
+    actor: "dev-agent",
+    role: "developer",
+    status: "review",
+  });
+  assert.deepEqual(cleanReviewMove.warnings, []);
+
+  const missingEvidenceMove = app.moveCard(card.id, {
+    actor: "review-agent",
+    role: "reviewer",
+    status: "testing",
+  });
+  assert.deepEqual(missingEvidenceMove.warnings, [
+    `Card #${card.id} has no validation_evidence; the tester will lack context.`,
+  ]);
+
+  app.close();
+});

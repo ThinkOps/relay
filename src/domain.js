@@ -220,7 +220,10 @@ function createRelay({ dbPath, cwd = process.cwd() }) {
 
     heartbeat({ agent: updated.assignedAgent, role: updated.assignedRole });
     event(updated.id, input, "card.claimed", `${updated.assignedAgent} claimed as ${claimingRole}`);
-    return updated;
+    return {
+      ...updated,
+      brief: briefCard(updated.id, { role: claimingRole }),
+    };
   }
 
   function moveCard(id, input = {}) {
@@ -228,6 +231,15 @@ function createRelay({ dbPath, cwd = process.cwd() }) {
     const nextStatus = enumValue(input.status, CARD_STATUSES, "Card status");
     const actingRole = role(input.role || card.assignedRole || "developer");
     assertMove(card.status, nextStatus, actingRole);
+    const warnings = moveWarnings(card, nextStatus);
+
+    if (hasText(input.handoff)) {
+      upsertHandoffIntent(card, {
+        actor: actor(input.actor),
+        role: actingRole,
+        bodyMarkdown: contextBody(input.handoff, "handoff_intent"),
+      });
+    }
 
     const updated = store.updateCardState(card.id, {
       status: nextStatus,
@@ -240,7 +252,10 @@ function createRelay({ dbPath, cwd = process.cwd() }) {
       fromStatus: card.status,
       toStatus: nextStatus,
     });
-    return updated;
+    return {
+      ...updated,
+      warnings,
+    };
   }
 
   function pauseCard(id, input = {}) {
@@ -552,6 +567,66 @@ function createRelay({ dbPath, cwd = process.cwd() }) {
       if (layer) return layer;
     }
     return null;
+  }
+
+  function upsertHandoffIntent(card, input) {
+    const title = "Handoff intent";
+    const [active] = store.listContextLayers({ cardId: card.id, layerType: "handoff_intent" });
+
+    if (active) {
+      const result = store.supersedeContextLayer(active.id, {
+        title,
+        bodyMarkdown: input.bodyMarkdown,
+        actor: input.actor,
+        role: input.role,
+        event: {
+          cardId: card.id,
+          actor: input.actor,
+          role: input.role,
+          action: "context.superseded",
+          message: title,
+          metadata: contextEventMetadata({
+            ...active,
+            supersedesId: active.id,
+          }),
+        },
+      });
+      notifyMentionedAgents(result.layer.cardId, result.event, result.layer.bodyMarkdown);
+      return result.layer;
+    }
+
+    const layer = store.createContextLayer({
+      projectId: null,
+      featureId: null,
+      cardId: card.id,
+      layerType: "handoff_intent",
+      title,
+      bodyMarkdown: input.bodyMarkdown,
+      actor: input.actor,
+      role: input.role,
+      supersedesId: null,
+    });
+    const storedEvent = store.addEvent({
+      cardId: card.id,
+      actor: input.actor,
+      role: input.role,
+      action: "context.added",
+      message: title,
+      metadata: contextEventMetadata(layer),
+    });
+    notifyMentionedAgents(layer.cardId, storedEvent, layer.bodyMarkdown);
+    return layer;
+  }
+
+  function moveWarnings(card, nextStatus) {
+    const warnings = [];
+    if (card.status === "in_progress" && nextStatus === "review" && !latestBriefLayer(card, "implementation_notes")) {
+      warnings.push(`Card #${card.id} has no implementation_notes; the reviewer will lack context.`);
+    }
+    if (card.status === "review" && nextStatus === "testing" && !latestBriefLayer(card, "validation_evidence")) {
+      warnings.push(`Card #${card.id} has no validation_evidence; the tester will lack context.`);
+    }
+    return warnings;
   }
 
   function event(cardId, input, action, message, metadata) {
