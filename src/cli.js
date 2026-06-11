@@ -440,6 +440,14 @@ function printBrief(brief) {
     }
   }
 
+  if (brief.recentSendBacks?.length > 0) {
+    console.log("");
+    console.log("Recent send-backs:");
+    for (const reason of brief.recentSendBacks) {
+      console.log(`- ${reason}`);
+    }
+  }
+
   if (brief.recentEvents.length > 0) {
     console.log("");
     console.log("Recent events:");

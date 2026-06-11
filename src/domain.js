@@ -90,7 +90,10 @@ function createRelay({ dbPath, cwd = process.cwd() }) {
       metadata: { dirty: git.dirty },
     });
 
-    return card;
+    return {
+      ...card,
+      recentSendBacks: store.listRecentSendBacks(project.id),
+    };
   }
 
   function submitCard(id, input = {}) {
@@ -415,11 +418,15 @@ function createRelay({ dbPath, cwd = process.cwd() }) {
       if (layer) layers[layerType] = layer;
     }
 
+    const recentSendBacks =
+      actingRole === "pm" && card.status === "needs_changes" ? store.listRecentSendBacks(card.projectId) : [];
+
     return {
       card,
       layers,
       decisions: events.filter((item) => item.action.startsWith("admin.")).map(briefEvent),
       recentEvents: events.slice(-5).map(briefEvent),
+      recentSendBacks,
       nextAction: nextBriefAction(card, actingRole),
     };
   }

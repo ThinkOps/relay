@@ -761,3 +761,47 @@ test("card lint warns without blocking submission", () => {
 
   app.close();
 });
+
+test("recent send-backs are returned for PM card creation and needs-changes briefs", () => {
+  const app = seededApp();
+  const first = app.createCard({
+    project: "Mobile App",
+    feature: "Login Revamp",
+    title: "Clarify reset scope",
+    problemStatement: "Reset scope is unclear.",
+    acceptanceCriteria: "Tester can verify the reset scope",
+    definitionOfDone: "Admin can approve the revised card.",
+    targetRepo: "git@example.com:mobile/app.git",
+    expectedRole: "developer",
+    riskLevel: "medium",
+    actor: "pm-agent",
+    role: "pm",
+  });
+
+  app.submitCard(first.id, { actor: "pm-agent", role: "pm" });
+  app.requestChanges(first.id, {
+    actor: "aditya",
+    role: "admin",
+    reason: "Too big — split it",
+  });
+
+  const next = app.createCard({
+    project: "Mobile App",
+    feature: "Login Revamp",
+    title: "Add reset token expiry",
+    problemStatement: "Reset tokens never expire.",
+    acceptanceCriteria: "Expired reset tokens are rejected",
+    definitionOfDone: "Tests pass and validation_evidence is written.",
+    targetRepo: "git@example.com:mobile/app.git",
+    expectedRole: "developer",
+    riskLevel: "medium",
+    actor: "pm-agent",
+    role: "pm",
+  });
+  const brief = app.briefCard(first.id, { role: "pm" });
+
+  assert.deepEqual(next.recentSendBacks, ["Too big — split it"]);
+  assert.deepEqual(brief.recentSendBacks, ["Too big — split it"]);
+
+  app.close();
+});

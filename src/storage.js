@@ -716,6 +716,22 @@ function createStore(dbPath) {
       .map(mapEvent);
   }
 
+  function listRecentSendBacks(projectId, limit = 3) {
+    return db
+      .prepare(`
+        SELECT events.message
+        FROM events
+        JOIN cards ON cards.id = events.card_id
+        WHERE cards.project_id = ?
+          AND events.action IN ('admin.needs_changes', 'admin.rejected')
+          AND events.message != ''
+        ORDER BY events.id DESC
+        LIMIT ?
+      `)
+      .all(projectId, limit)
+      .map((row) => row.message);
+  }
+
   function addNotification(input) {
     const createdAt = now();
     db.prepare(`
@@ -814,6 +830,7 @@ function createStore(dbPath) {
     listNotifications,
     listOnlineAgents,
     listProjects,
+    listRecentSendBacks,
     updateCardLinks,
     updateCardScope,
     updateCardState,
