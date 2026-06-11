@@ -698,3 +698,66 @@ test("claim returns a brief and move manages handoff context with soft warnings"
 
   app.close();
 });
+
+test("card lint warns without blocking submission", () => {
+  const app = seededApp();
+  const title = "Add exhaustive account recovery throttling and device anomaly checks now";
+  const problem = "Current recovery has too many risk paths. ".repeat(20);
+  const criteria = [
+    "Failed recovery attempts are rate limited",
+    "Successful recovery remains unaffected",
+    "Rate limit resets after 60 seconds",
+    "Device anomaly creates an audit event",
+    "Admins can see the audit event",
+    "Integration tests cover rate limit",
+    "Integration tests cover reset",
+    "Integration tests cover happy path",
+  ];
+  const card = app.createCard({
+    project: "Mobile App",
+    feature: "Login Revamp",
+    title,
+    problemStatement: problem,
+    acceptanceCriteria: criteria,
+    definitionOfDone: "Tests pass and validation_evidence is written.",
+    targetRepo: "git@example.com:mobile/app.git",
+    expectedRole: "developer",
+    riskLevel: "medium",
+    storyPoints: 8,
+    actor: "pm-agent",
+    role: "pm",
+  });
+
+  assert.deepEqual(app.lintCard(card.id), [
+    "Titles over 60 chars get approved slower. Use an imperative outcome-focused title under 60 chars.",
+    "Long problem statements get approved slower. State what is true today and why it's a problem in 2-4 sentences.",
+    "More than 7 acceptance criteria usually means this is two cards. Consider splitting.",
+    "Cards should be completable in one agent session. Consider splitting.",
+  ]);
+
+  const submitted = app.submitCard(card.id, { actor: "pm-agent", role: "pm" });
+  assert.equal(submitted.status, "pending_approval");
+  assert.equal(submitted.warnings.length, 4);
+
+  const clean = app.createCard({
+    project: "Mobile App",
+    feature: "Login Revamp",
+    title: "Add reset rate limit",
+    problemStatement: "Reset attempts are unlimited. A script can brute force reset codes.",
+    acceptanceCriteria: [
+      "More than 5 failed attempts per minute returns 429",
+      "Successful reset remains unaffected",
+      "Integration test covers the limit and happy path",
+    ],
+    definitionOfDone: "Tests pass and validation_evidence is written.",
+    targetRepo: "git@example.com:mobile/app.git",
+    expectedRole: "developer",
+    riskLevel: "medium",
+    storyPoints: 3,
+    actor: "pm-agent",
+    role: "pm",
+  });
+  assert.deepEqual(app.lintCard(clean.id), []);
+
+  app.close();
+});

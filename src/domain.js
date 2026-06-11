@@ -106,7 +106,10 @@ function createRelay({ dbPath, cwd = process.cwd() }) {
     });
 
     event(updated.id, input, "card.submitted", "Submitted for admin approval");
-    return updated;
+    return {
+      ...updated,
+      warnings: cardLintWarnings(updated),
+    };
   }
 
   function reviseCard(id, input = {}) {
@@ -431,6 +434,10 @@ function createRelay({ dbPath, cwd = process.cwd() }) {
 
   function listCards(filters = {}) {
     return store.listCards(filters);
+  }
+
+  function lintCard(id) {
+    return cardLintWarnings(requireCard(id));
   }
 
   function board(filters = {}) {
@@ -782,6 +789,7 @@ function createRelay({ dbPath, cwd = process.cwd() }) {
     linkCard,
     listAgentNotifications,
     listCards,
+    lintCard,
     listContextLayers,
     listFeatures: store.listFeatures,
     listOnlineAgents,
@@ -901,10 +909,32 @@ function acceptanceCriteria(value) {
         .filter(Boolean);
 
   if (criteria.length === 0) {
-    throw new Error("At least one acceptance criterion is required.");
+    throw new Error("At least one acceptance criterion is required. Write a falsifiable pass/fail statement a tester can verify.");
   }
 
   return criteria;
+}
+
+function cardLintWarnings(card) {
+  const warnings = [];
+
+  if (card.title.length > 60) {
+    warnings.push("Titles over 60 chars get approved slower. Use an imperative outcome-focused title under 60 chars.");
+  }
+
+  if (card.problemStatement.length > 600) {
+    warnings.push("Long problem statements get approved slower. State what is true today and why it's a problem in 2-4 sentences.");
+  }
+
+  if ((card.acceptanceCriteria || []).length > 7) {
+    warnings.push("More than 7 acceptance criteria usually means this is two cards. Consider splitting.");
+  }
+
+  if (card.storyPoints > 5) {
+    warnings.push("Cards should be completable in one agent session. Consider splitting.");
+  }
+
+  return warnings;
 }
 
 function enumValue(value, allowed, label) {

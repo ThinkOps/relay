@@ -195,6 +195,10 @@ function dispatch(app, env, parsed, area, action, rest, cwd) {
       return app.getCard(one(rest, "Card id"));
     }
 
+    if (action === "lint") {
+      return app.lintCard(one(rest, "Card id"));
+    }
+
     if (action === "list") {
       return app.listCards({
         status: flags.status,
@@ -580,6 +584,7 @@ Common commands:
   relay brief 12 --role developer --json
   relay card list [--status pending_approval] [--json]
   relay card show 12 --json
+  relay card lint 12 --json
   relay note 12 "Status update" --actor dev-agent --role developer
   relay link 12 --branch feature/reset --commit abc123 --pr https://...
   relay context add --card 12 --type implementation_notes --title "Backend changes" --body-file notes.md
