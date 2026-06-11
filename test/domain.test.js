@@ -508,6 +508,19 @@ test("context layers supersede immutably and list active layers by default", () 
     actor: "dev-agent",
     role: "developer",
   });
+  assert.throws(
+    () =>
+      app.addContextLayer({
+        card: card.id,
+        type: "implementation_notes",
+        title: "Sneaky replacement",
+        body: "This should not create lineage without deactivating the old layer.",
+        supersedesId: original.id,
+        actor: "dev-agent",
+        role: "developer",
+      }),
+    /Use context supersede to replace an existing context layer/,
+  );
 
   const replacement = app.supersedeContextLayer(original.id, {
     title: "Final notes",

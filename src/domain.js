@@ -325,6 +325,10 @@ function createRelay({ dbPath, cwd = process.cwd() }) {
   }
 
   function addContextLayer(input = {}) {
+    if (input.supersedesId !== undefined && input.supersedesId !== null && input.supersedesId !== "") {
+      throw new Error("Use context supersede to replace an existing context layer.");
+    }
+
     const scope = resolveContextScope(input);
     const layerType = contextLayerType(input.type || input.layerType);
     assertLayerScope(layerType, scope.kind);
@@ -341,7 +345,7 @@ function createRelay({ dbPath, cwd = process.cwd() }) {
       bodyMarkdown,
       actor: actorName,
       role: actorRole,
-      supersedesId: input.supersedesId ? positiveInteger(input.supersedesId, "Supersedes id") : null,
+      supersedesId: null,
     });
 
     const storedEvent = store.addEvent({

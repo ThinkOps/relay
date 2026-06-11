@@ -226,6 +226,26 @@ test("server exposes board data and protects mutations with token", async () => 
     assert.equal(createdContextResponse.status, 200);
     assert.equal(createdContext.layerType, "validation_evidence");
 
+    const invalidLineageResponse = await fetch(`${server.url}/api/context`, {
+      method: "POST",
+      body: JSON.stringify({
+        actor: "tester",
+        body: "Manual QA replacement without using supersede.",
+        card: claimedCard.id,
+        role: "tester",
+        supersedesId: createdContext.id,
+        title: "Invalid lineage",
+        type: "validation_evidence",
+      }),
+      headers: {
+        "Content-Type": "application/json",
+        "X-Relay-Token": server.token,
+      },
+    });
+    const invalidLineage = await invalidLineageResponse.json();
+    assert.equal(invalidLineageResponse.status, 400);
+    assert.match(invalidLineage.error, /Use context supersede/);
+
     const supersededContextResponse = await fetch(`${server.url}/api/context/${createdContext.id}/supersede`, {
       method: "POST",
       body: JSON.stringify({
