@@ -169,11 +169,10 @@ function dispatch(app, env, parsed, area, action, rest, cwd) {
     }
 
     if (action === "revise") {
-      return app.reviseCard(one(rest, "Card id"), {
+      const input = {
         title: flags.title,
         userStory: flags.story,
         problemStatement: flags.problem,
-        acceptanceCriteria: flags.ac !== undefined ? flags.ac : flags.acceptance,
         definitionOfDone: flags.done,
         targetRepo: flags.repo,
         expectedRole: flags.expectedRole || flags.role,
@@ -185,7 +184,13 @@ function dispatch(app, env, parsed, area, action, rest, cwd) {
         submit: flags.submit === true,
         actor,
         role: flags.actorRole || "pm",
-      });
+      };
+
+      if (flags.ac !== undefined || flags.acceptance !== undefined) {
+        input.acceptanceCriteria = flags.ac !== undefined ? flags.ac : flags.acceptance;
+      }
+
+      return app.reviseCard(one(rest, "Card id"), input);
     }
 
     if (action === "show") {

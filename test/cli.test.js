@@ -87,6 +87,46 @@ test("claim prints the brief in human-readable mode", () => {
   assert.doesNotMatch(output, /brief: \[object Object\]/);
 });
 
+test("card revise preserves acceptance criteria when --ac is omitted", () => {
+  const root = tempDir();
+  const dbPath = path.join(root, ".relay", "relay.db");
+
+  const app = createRelay({ dbPath, cwd: process.cwd() });
+  app.createFeature({ name: "Login Revamp", actor: "pm-agent", role: "pm" });
+  app.createProject({ feature: "Login Revamp", name: "Mobile App", actor: "admin", role: "admin" });
+  const card = app.createCard({
+    project: "Mobile App",
+    feature: "Login Revamp",
+    title: "Clarify reset copy",
+    problemStatement: "Reset copy is unclear.",
+    acceptanceCriteria: ["Existing criterion stays intact"],
+    definitionOfDone: "PM note is recorded.",
+    targetRepo: "git@example.com:mobile/app.git",
+    expectedRole: "developer",
+    riskLevel: "low",
+    actor: "pm-agent",
+    role: "pm",
+  });
+  app.close();
+
+  const revised = JSON.parse(
+    runRelay([
+      "--db",
+      dbPath,
+      "card",
+      "revise",
+      String(card.id),
+      "--note",
+      "Recorded clarification without changing ACs.",
+      "--actor",
+      "pm-agent",
+      "--json",
+    ]),
+  );
+
+  assert.deepEqual(revised.acceptanceCriteria, ["Existing criterion stays intact"]);
+});
+
 test("context CLI adds, lists, shows, and supersedes markdown bodies", () => {
   const root = tempDir();
   const dbPath = path.join(root, ".relay", "relay.db");
