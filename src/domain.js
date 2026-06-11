@@ -1,4 +1,4 @@
-const { APPROVAL_STATUSES, CARD_STATUSES, FEATURE_STATUSES, RISK_LEVELS, ROLES } = require("./constants");
+const { APPROVAL_STATUSES, CARD_STATUSES, FEATURE_STATUSES, LAYER_TYPES, RISK_LEVELS, ROLES } = require("./constants");
 const { readGitMetadata } = require("./git");
 const { createStore } = require("./storage");
 
@@ -295,6 +295,89 @@ function createRelay({ dbPath, cwd = process.cwd() }) {
     return updated;
   }
 
+  function addContextLayer(input = {}) {
+    const scope = resolveContextScope(input);
+    const layerType = contextLayerType(input.type || input.layerType);
+    assertLayerScope(layerType, scope.kind);
+    const actorName = actor(input.actor);
+    const actorRole = role(input.role || "developer");
+    const bodyMarkdown = contextBody(input.body || input.bodyMarkdown, layerType);
+
+    const layer = store.createContextLayer({
+      projectId: scope.kind === "project" ? scope.project.id : null,
+      featureId: scope.kind === "feature" ? scope.feature.id : null,
+      cardId: scope.kind === "card" ? scope.card.id : null,
+      layerType,
+      title: requiredText(input.title, "Layer title"),
+      bodyMarkdown,
+      actor: actorName,
+      role: actorRole,
+      supersedesId: input.supersedesId ? positiveInteger(input.supersedesId, "Supersedes id") : null,
+    });
+
+    const storedEvent = store.addEvent({
+      cardId: layer.cardId,
+      actor: actorName,
+      role: actorRole,
+      action: "context.added",
+      message: layer.title,
+      metadata: contextEventMetadata(layer),
+    });
+
+    notifyMentionedAgents(layer.cardId, storedEvent, layer.bodyMarkdown);
+    return layer;
+  }
+
+  function supersedeContextLayer(id, input = {}) {
+    const current = requireContextLayer(id);
+    if (current.supersededById) {
+      throw new Error(`Layer ${current.id} already superseded by ${current.supersededById}.`);
+    }
+
+    const actorName = actor(input.actor);
+    const actorRole = role(input.role || "developer");
+    const bodyMarkdown = contextBody(input.body || input.bodyMarkdown, current.layerType);
+    const title = input.title === undefined ? current.title : requiredText(input.title, "Layer title");
+    const metadata = contextEventMetadata({
+      ...current,
+      supersedesId: current.id,
+    });
+
+    const result = store.supersedeContextLayer(current.id, {
+      title,
+      bodyMarkdown,
+      actor: actorName,
+      role: actorRole,
+      event: {
+        cardId: current.cardId,
+        actor: actorName,
+        role: actorRole,
+        action: "context.superseded",
+        message: title,
+        metadata,
+      },
+    });
+
+    notifyMentionedAgents(result.layer.cardId, result.event, result.layer.bodyMarkdown);
+    return result.layer;
+  }
+
+  function listContextLayers(input = {}) {
+    const scope = resolveContextScope(input);
+    const layerType = input.type || input.layerType ? contextLayerType(input.type || input.layerType) : "";
+    return store.listContextLayers({
+      projectId: scope.kind === "project" ? scope.project.id : null,
+      featureId: scope.kind === "feature" ? scope.feature.id : null,
+      cardId: scope.kind === "card" ? scope.card.id : null,
+      layerType,
+      includeSuperseded: Boolean(input.includeSuperseded),
+    });
+  }
+
+  function getContextLayer(id) {
+    return requireContextLayer(id);
+  }
+
   function getCard(id) {
     const card = requireCard(id);
     return {
@@ -372,6 +455,50 @@ function createRelay({ dbPath, cwd = process.cwd() }) {
     return feature;
   }
 
+  function resolveContextScope(input) {
+    const hasCard = hasText(input.card);
+    const hasFeature = hasText(input.feature);
+    const hasProject = hasText(input.project);
+
+    if (hasCard && (hasFeature || hasProject)) {
+      throw new Error("Context layer scope must be exactly one of project, feature, or card.");
+    }
+
+    if (hasCard) {
+      return { kind: "card", card: requireCard(input.card) };
+    }
+
+    if (hasFeature) {
+      const parsed = parseFeatureScope(input.project, input.feature);
+      const project = resolveProject(parsed.project);
+      const feature = resolveFeature(project.id, parsed.feature);
+      return { kind: "feature", project, feature };
+    }
+
+    if (hasProject) {
+      return { kind: "project", project: resolveProject(input.project) };
+    }
+
+    throw new Error("Context layer scope must be exactly one of project, feature, or card.");
+  }
+
+  function parseFeatureScope(projectValue, featureValue) {
+    const featureText = requiredText(featureValue, "Feature");
+    if (hasText(projectValue)) {
+      return { project: projectValue, feature: featureText };
+    }
+
+    const separator = featureText.indexOf(":");
+    if (separator > 0 && separator < featureText.length - 1) {
+      return {
+        project: featureText.slice(0, separator),
+        feature: featureText.slice(separator + 1),
+      };
+    }
+
+    throw new Error("Feature context scope requires --project or --feature project:feature.");
+  }
+
   function requireCard(id) {
     const cardId = Number.parseInt(String(id), 10);
     if (!Number.isInteger(cardId) || cardId < 1) {
@@ -381,6 +508,13 @@ function createRelay({ dbPath, cwd = process.cwd() }) {
     const card = store.getCardById(cardId);
     if (!card) throw new Error(`Card not found: ${cardId}`);
     return card;
+  }
+
+  function requireContextLayer(id) {
+    const layerId = positiveInteger(id, "Layer id");
+    const layer = store.getContextLayerById(layerId);
+    if (!layer) throw new Error(`Layer not found: ${layerId}`);
+    return layer;
   }
 
   function event(cardId, input, action, message, metadata) {
@@ -395,6 +529,20 @@ function createRelay({ dbPath, cwd = process.cwd() }) {
 
     if (cardId) notifyForEvent(cardId, storedEvent);
     return storedEvent;
+  }
+
+  function notifyMentionedAgents(cardId, storedEvent, text) {
+    if (!cardId) return;
+
+    for (const targetAgent of new Set(mentionedAgents(text))) {
+      if (targetAgent === storedEvent.actor) continue;
+      store.addNotification({
+        eventId: storedEvent.id,
+        cardId,
+        targetAgent,
+        targetRole: "",
+      });
+    }
   }
 
   function notifyForEvent(cardId, storedEvent) {
@@ -483,6 +631,7 @@ function createRelay({ dbPath, cwd = process.cwd() }) {
 
   return {
     addNote,
+    addContextLayer,
     acknowledgeNotification,
     approveCard,
     board,
@@ -494,10 +643,12 @@ function createRelay({ dbPath, cwd = process.cwd() }) {
     createFeature,
     createProject,
     getCard,
+    getContextLayer,
     heartbeat,
     linkCard,
     listAgentNotifications,
     listCards,
+    listContextLayers,
     listFeatures: store.listFeatures,
     listOnlineAgents,
     listProjects: store.listProjects,
@@ -507,6 +658,7 @@ function createRelay({ dbPath, cwd = process.cwd() }) {
     requestChanges,
     reviseCard,
     submitCard,
+    supersedeContextLayer,
   };
 }
 
@@ -524,6 +676,50 @@ function noteText(value) {
 function optionalText(value) {
   if (value === undefined || value === null) return "";
   return String(value).trim();
+}
+
+function hasText(value) {
+  return optionalText(value) !== "";
+}
+
+function contextLayerType(value) {
+  const normalized = optionalText(value).toLowerCase();
+  const allowed = Object.keys(LAYER_TYPES);
+  if (!allowed.includes(normalized)) {
+    throw new Error(`Layer type must be one of: ${allowed.join(", ")}.`);
+  }
+  return normalized;
+}
+
+function assertLayerScope(layerType, scope) {
+  const allowed = LAYER_TYPES[layerType].scopes;
+  if (!allowed.includes(scope)) {
+    throw new Error(`${layerType} can only be scoped to: ${allowed.join(", ")}.`);
+  }
+}
+
+function contextBody(value, layerType) {
+  const body = optionalText(value).replace(/\\n/g, "\n").replace(/\\t/g, "\t");
+  if (!body) throw new Error("Layer body is required.");
+
+  const max = LAYER_TYPES[layerType].bodyMax;
+  if (body.length > max) {
+    throw new Error(`${layerType} body exceeds ${max} chars (got ${body.length}). Summarize.`);
+  }
+
+  return body;
+}
+
+function contextEventMetadata(layer) {
+  return {
+    layerId: layer.id,
+    layerType: layer.layerType,
+    scope: layer.scope,
+    projectId: layer.projectId,
+    featureId: layer.featureId,
+    cardId: layer.cardId,
+    supersedesId: layer.supersedesId,
+  };
 }
 
 function acceptanceCriteria(value) {

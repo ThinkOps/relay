@@ -364,3 +364,189 @@ test("only admin can mark cards done", () => {
 
   app.close();
 });
+
+test("context layers add project and card scoped memory", () => {
+  const app = seededApp();
+  const card = app.createCard({
+    project: "Mobile App",
+    feature: "Login Revamp",
+    title: "Explain reset implementation",
+    problemStatement: "Reviewers need implementation context.",
+    acceptanceCriteria: "Implementation notes mention changed files",
+    definitionOfDone: "Reviewer can read context without the full timeline.",
+    targetRepo: "git@example.com:mobile/app.git",
+    expectedRole: "developer",
+    riskLevel: "medium",
+    actor: "pm-agent",
+    role: "pm",
+  });
+
+  const projectMap = app.addContextLayer({
+    project: "Mobile App",
+    type: "project_map",
+    title: "Mobile app map",
+    body: "## Structure\\n- src/auth handles reset flows",
+    actor: "mapper-agent",
+    role: "developer",
+  });
+  const implementation = app.addContextLayer({
+    card: card.id,
+    type: "implementation_notes",
+    title: "Reset implementation notes",
+    body: "## Work\\n- Updated reset token validation\\n- @review-agent start with src/auth/reset.js",
+    actor: "dev-agent",
+    role: "developer",
+  });
+
+  assert.equal(projectMap.scope, "project");
+  assert.equal(projectMap.layerType, "project_map");
+  assert.equal(projectMap.bodyMarkdown, "## Structure\n- src/auth handles reset flows");
+  assert.equal(implementation.scope, "card");
+  assert.equal(implementation.cardId, card.id);
+
+  assert.deepEqual(
+    app.listContextLayers({ project: "Mobile App" }).map((layer) => layer.id),
+    [projectMap.id],
+  );
+  assert.deepEqual(
+    app.listContextLayers({ card: card.id, type: "implementation_notes" }).map((layer) => layer.id),
+    [implementation.id],
+  );
+
+  const contextEvent = app.getCard(card.id).events.find((event) => event.action === "context.added");
+  assert.equal(contextEvent.metadata.layerId, implementation.id);
+  assert.equal(contextEvent.metadata.layerType, "implementation_notes");
+
+  const inbox = app.listAgentNotifications({ agent: "review-agent", unread: true });
+  assert.equal(inbox.length, 1);
+  assert.equal(inbox[0].event.action, "context.added");
+
+  app.close();
+});
+
+test("context layer validation rejects bad scopes, types, and oversized bodies", () => {
+  const app = seededApp();
+  const card = app.createCard({
+    project: "Mobile App",
+    feature: "Login Revamp",
+    title: "Validate context inputs",
+    problemStatement: "Context layers need strict boundaries.",
+    acceptanceCriteria: "Invalid context is rejected loudly",
+    definitionOfDone: "Bad writes do not create layers.",
+    targetRepo: "git@example.com:mobile/app.git",
+    expectedRole: "developer",
+    riskLevel: "low",
+    actor: "pm-agent",
+    role: "pm",
+  });
+
+  assert.throws(
+    () =>
+      app.addContextLayer({
+        project: "Mobile App",
+        card: card.id,
+        type: "project_map",
+        title: "Bad scope",
+        body: "Cannot be both project and card scoped.",
+      }),
+    /exactly one of project, feature, or card/,
+  );
+  assert.throws(
+    () =>
+      app.addContextLayer({
+        project: "Mobile App",
+        type: "unknown",
+        title: "Unknown type",
+        body: "No such type.",
+      }),
+    /Layer type must be one of/,
+  );
+  assert.throws(
+    () =>
+      app.addContextLayer({
+        project: "Mobile App",
+        type: "implementation_notes",
+        title: "Wrong scope",
+        body: "Implementation notes belong to cards.",
+      }),
+    /implementation_notes can only be scoped to: card/,
+  );
+  assert.throws(
+    () =>
+      app.addContextLayer({
+        card: card.id,
+        type: "implementation_notes",
+        title: "Too long",
+        body: "x".repeat(4001),
+      }),
+    /implementation_notes body exceeds 4000 chars \(got 4001\)\. Summarize\./,
+  );
+
+  app.close();
+});
+
+test("context layers supersede immutably and list active layers by default", () => {
+  const app = seededApp();
+  const card = app.createCard({
+    project: "Mobile App",
+    feature: "Login Revamp",
+    title: "Supersede implementation notes",
+    problemStatement: "Agents need fresh active notes without losing history.",
+    acceptanceCriteria: "Old context is inactive but still readable",
+    definitionOfDone: "Latest context is returned by default.",
+    targetRepo: "git@example.com:mobile/app.git",
+    expectedRole: "developer",
+    riskLevel: "medium",
+    actor: "pm-agent",
+    role: "pm",
+  });
+  const original = app.addContextLayer({
+    card: card.id,
+    type: "implementation_notes",
+    title: "Initial notes",
+    body: "Started with token validation.",
+    actor: "dev-agent",
+    role: "developer",
+  });
+
+  const replacement = app.supersedeContextLayer(original.id, {
+    title: "Final notes",
+    body: "Finished token validation and added edge case tests.",
+    actor: "dev-agent",
+    role: "developer",
+  });
+  const inactive = app.getContextLayer(original.id);
+  const active = app.listContextLayers({ card: card.id, type: "implementation_notes" });
+  const all = app.listContextLayers({
+    card: card.id,
+    type: "implementation_notes",
+    includeSuperseded: true,
+  });
+
+  assert.equal(replacement.supersedesId, original.id);
+  assert.equal(inactive.supersededById, replacement.id);
+  assert.deepEqual(active.map((layer) => layer.id), [replacement.id]);
+  assert.deepEqual(
+    all.map((layer) => layer.id),
+    [replacement.id, original.id],
+  );
+  assert.throws(
+    () =>
+      app.supersedeContextLayer(original.id, {
+        body: "Trying to supersede inactive context.",
+        actor: "dev-agent",
+        role: "developer",
+      }),
+    new RegExp(`Layer ${original.id} already superseded by ${replacement.id}`),
+  );
+
+  const events = app.getCard(card.id).events.filter((event) => event.action.startsWith("context."));
+  assert.deepEqual(
+    events.map((event) => event.action),
+    ["context.added", "context.superseded"],
+  );
+  assert.equal(events[1].metadata.layerId, replacement.id);
+  assert.equal(events[1].metadata.supersedesId, original.id);
+
+  app.close();
+});

@@ -94,6 +94,30 @@ function migrate(db) {
 
     CREATE UNIQUE INDEX IF NOT EXISTS notifications_unique_target
       ON notifications(event_id, target_agent, target_role);
+
+    CREATE TABLE IF NOT EXISTS context_layers (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      project_id INTEGER,
+      feature_id INTEGER,
+      card_id INTEGER,
+      layer_type TEXT NOT NULL,
+      title TEXT NOT NULL,
+      body_markdown TEXT NOT NULL,
+      actor TEXT NOT NULL,
+      role TEXT NOT NULL,
+      supersedes_id INTEGER,
+      superseded_by_id INTEGER,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+      FOREIGN KEY (feature_id) REFERENCES features(id) ON DELETE CASCADE,
+      FOREIGN KEY (card_id) REFERENCES cards(id) ON DELETE CASCADE,
+      FOREIGN KEY (supersedes_id) REFERENCES context_layers(id),
+      FOREIGN KEY (superseded_by_id) REFERENCES context_layers(id),
+      CHECK ((project_id IS NOT NULL) + (feature_id IS NOT NULL) + (card_id IS NOT NULL) = 1)
+    );
+
+    CREATE INDEX IF NOT EXISTS context_layers_active
+      ON context_layers(layer_type) WHERE superseded_by_id IS NULL;
   `);
 
   ensureColumn(db, "cards", "user_story", "TEXT NOT NULL DEFAULT ''");
@@ -224,6 +248,31 @@ function mapNotification(row) {
       title: row.card_title,
     },
   };
+}
+
+function mapContextLayer(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    projectId: row.project_id,
+    featureId: row.feature_id,
+    cardId: row.card_id,
+    layerType: row.layer_type,
+    title: row.title,
+    bodyMarkdown: row.body_markdown,
+    actor: row.actor,
+    role: row.role,
+    supersedesId: row.supersedes_id,
+    supersededById: row.superseded_by_id,
+    createdAt: row.created_at,
+    scope: contextScope(row),
+  };
+}
+
+function contextScope(row) {
+  if (row.card_id) return "card";
+  if (row.feature_id) return "feature";
+  return "project";
 }
 
 function createStore(dbPath) {
@@ -538,6 +587,127 @@ function createStore(dbPath) {
     return getEventById(Number(result.lastInsertRowid));
   }
 
+  function createContextLayer(input) {
+    const result = db
+      .prepare(`
+        INSERT INTO context_layers (
+          project_id,
+          feature_id,
+          card_id,
+          layer_type,
+          title,
+          body_markdown,
+          actor,
+          role,
+          supersedes_id,
+          created_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `)
+      .run(
+        input.projectId ?? null,
+        input.featureId ?? null,
+        input.cardId ?? null,
+        input.layerType,
+        input.title,
+        input.bodyMarkdown,
+        input.actor,
+        input.role,
+        input.supersedesId ?? null,
+        now(),
+      );
+
+    return getContextLayerById(Number(result.lastInsertRowid));
+  }
+
+  function supersedeContextLayer(id, input) {
+    db.exec("BEGIN IMMEDIATE");
+    try {
+      const current = getContextLayerById(id);
+      if (!current) throw new Error(`Layer not found: ${id}`);
+      if (current.supersededById) {
+        throw new Error(`Layer ${id} already superseded by ${current.supersededById}.`);
+      }
+
+      const layer = createContextLayer({
+        projectId: current.projectId,
+        featureId: current.featureId,
+        cardId: current.cardId,
+        layerType: current.layerType,
+        title: input.title ?? current.title,
+        bodyMarkdown: input.bodyMarkdown,
+        actor: input.actor,
+        role: input.role,
+        supersedesId: current.id,
+      });
+
+      db.prepare("UPDATE context_layers SET superseded_by_id = ? WHERE id = ?").run(layer.id, current.id);
+
+      const storedEvent = addEvent({
+        ...input.event,
+        metadata: {
+          ...input.event.metadata,
+          layerId: layer.id,
+          supersedesId: current.id,
+        },
+      });
+      db.exec("COMMIT");
+
+      return {
+        layer: getContextLayerById(layer.id),
+        superseded: getContextLayerById(current.id),
+        event: storedEvent,
+      };
+    } catch (error) {
+      db.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
+  function getContextLayerById(id) {
+    return mapContextLayer(db.prepare("SELECT * FROM context_layers WHERE id = ?").get(id));
+  }
+
+  function listContextLayers(input = {}) {
+    const clauses = [];
+    const values = [];
+
+    if (input.projectId) {
+      clauses.push("project_id = ?");
+      values.push(input.projectId);
+    }
+
+    if (input.featureId) {
+      clauses.push("feature_id = ?");
+      values.push(input.featureId);
+    }
+
+    if (input.cardId) {
+      clauses.push("card_id = ?");
+      values.push(input.cardId);
+    }
+
+    if (input.layerType) {
+      clauses.push("layer_type = ?");
+      values.push(input.layerType);
+    }
+
+    if (!input.includeSuperseded) {
+      clauses.push("superseded_by_id IS NULL");
+    }
+
+    const where = clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : "";
+
+    return db
+      .prepare(`
+        SELECT * FROM context_layers
+        ${where}
+        ORDER BY created_at DESC, id DESC
+      `)
+      .all(...values)
+      .map(mapContextLayer);
+  }
+
   function getEventById(id) {
     return mapEvent(db.prepare("SELECT * FROM events WHERE id = ?").get(id));
   }
@@ -631,14 +801,17 @@ function createStore(dbPath) {
     acknowledgeNotification,
     close,
     createCard,
+    createContextLayer,
     createFeature,
     createProject,
     getCardById,
     getAgentHeartbeat,
+    getContextLayerById,
     getFeatureByName,
     getNotificationById,
     getProjectByName,
     listCards,
+    listContextLayers,
     listEvents,
     listFeatures,
     listNotifications,
@@ -647,6 +820,7 @@ function createStore(dbPath) {
     updateCardLinks,
     updateCardScope,
     updateCardState,
+    supersedeContextLayer,
     upsertAgentHeartbeat,
   };
 }
