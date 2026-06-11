@@ -330,8 +330,8 @@ main {
 
 .board {
   display: grid;
-  gap: 16px;
-  grid-auto-columns: minmax(270px, 1fr);
+  gap: 14px;
+  grid-auto-columns: minmax(300px, 1fr);
   grid-auto-flow: column;
   max-width: 100%;
   min-width: 0;
@@ -341,12 +341,12 @@ main {
 }
 
 .column {
-  background: rgba(255, 255, 255, 0.62);
+  background: rgba(255, 255, 255, 0.72);
   border: 1px solid var(--line-soft);
   border-top: 3px solid #94a3b8;
   border-radius: 8px;
   min-height: 220px;
-  min-width: 270px;
+  min-width: 300px;
   padding: 12px;
 }
 
@@ -393,9 +393,10 @@ main {
   display: flex;
   justify-content: space-between;
   margin-bottom: 12px;
-  text-transform: uppercase;
-  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 12px;
+  text-transform: none;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 13px;
+  font-weight: 800;
   letter-spacing: 0;
 }
 
@@ -417,12 +418,12 @@ main {
   box-shadow: none;
   cursor: pointer;
   display: grid;
-  gap: 9px;
+  gap: 8px;
   margin-bottom: 10px;
   min-width: 0;
-  min-height: 128px;
+  min-height: 112px;
   overflow: hidden;
-  padding: 14px;
+  padding: 13px;
   text-align: left;
   white-space: normal;
   width: 100%;
@@ -450,27 +451,32 @@ main {
 
 .card-heading {
   align-items: start;
-  display: grid;
-  gap: 8px;
-  grid-template-columns: minmax(0, 1fr) auto;
+  display: block;
+  min-width: 0;
 }
 
 .card h3 {
   display: block;
-  font-size: 16px;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 15px;
+  font-weight: 800;
+  line-height: 1.28;
   max-width: 100%;
   min-width: 0;
   overflow: visible;
+  overflow-wrap: break-word;
+  text-transform: none;
   white-space: normal;
   width: 100%;
-  word-break: break-word;
+  word-break: normal;
 }
 
 .card-context {
   color: var(--muted);
-  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   font-size: 12px;
-  line-height: 1.35;
+  font-weight: 600;
+  line-height: 1.4;
 }
 
 .card-status-line {
@@ -524,12 +530,14 @@ main {
   color: var(--slate-dark);
   display: inline-flex;
   gap: 5px;
-  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 11px;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 12px;
+  font-weight: 700;
   line-height: 1.2;
-  max-width: 130px;
-  overflow-wrap: anywhere;
-  padding: 4px 7px;
+  max-width: 100%;
+  overflow-wrap: break-word;
+  padding: 5px 8px;
+  width: fit-content;
 }
 
 .owner-chip.assigned {

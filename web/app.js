@@ -268,11 +268,12 @@ function cardNode(card) {
   statusLine.append(el("span", "status-dot"), el("span", "", label(card.status)));
 
   const heading = el("div", "card-heading");
-  heading.append(el("h3", "", card.title), ownerChip(card));
+  heading.append(el("h3", "", card.title));
 
   node.append(
     statusLine,
     heading,
+    ownerChip(card),
     el("p", "card-context", `${card.projectName} / ${card.featureName}`),
     signalPreview(card),
     lintChips(card.lintWarnings || []),
