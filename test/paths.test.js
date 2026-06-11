@@ -37,14 +37,3 @@ test("central database path wins over local workspace discovery", () => {
   const workspace = requireWorkspace(path.dirname(localDb), centralDb);
   assert.equal(workspace.dbPath, centralDb);
 });
-
-test("legacy workspace discovery remains supported", () => {
-  const root = tempDir();
-  const legacyDb = path.join(root, "agent-repo", ".mistri", "mistri.db");
-  fs.mkdirSync(path.dirname(legacyDb), { recursive: true });
-  fs.writeFileSync(legacyDb, "");
-
-  const workspace = requireWorkspace(path.dirname(legacyDb));
-  assert.equal(workspace.dbPath, legacyDb);
-  assert.equal(workspace.relayDir, path.dirname(legacyDb));
-});

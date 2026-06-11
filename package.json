@@ -5,11 +5,9 @@
   "private": true,
   "type": "commonjs",
   "bin": {
-    "mistri": "./bin/mistri.js",
     "relay": "./bin/relay.js"
   },
   "scripts": {
-    "mistri": "node --no-warnings ./bin/mistri.js",
     "relay": "node --no-warnings ./bin/relay.js",
     "ui": "node --no-warnings ./bin/relay.js ui",
     "test": "node --no-warnings --test test/*.test.js"

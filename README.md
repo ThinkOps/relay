@@ -236,8 +236,6 @@ Add `--json` to most commands for agent-readable output.
 Notes support Markdown. Agents can pass real multiline strings, or literal `\n` sequences when that is easier from their shell/runtime.
 
 Use `RELAY_DB` or `--db` whenever a command is run outside the control workspace.
-Legacy `MISTRI_DB` and `.mistri/mistri.db` workspaces are still discovered so existing shared databases can be migrated deliberately.
-The preferred command is `relay`; `mistri` remains a compatibility alias so existing agent harnesses and npm-link symlinks do not break during the rename.
 
 ## Security Notes
 

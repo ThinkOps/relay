@@ -13,7 +13,7 @@ async function runCli(argv = process.argv.slice(2), env = process.env, cwd = pro
     return;
   }
 
-  const selectedDb = parsed.flags.db || env.RELAY_DB || env.MISTRI_DB;
+  const selectedDb = parsed.flags.db || env.RELAY_DB;
 
   if (area === "init") {
     const workspace = workspaceForInit(cwd, selectedDb);
@@ -486,7 +486,6 @@ Global flags:
 
 Environment:
   RELAY_DB=/path/to/control/.relay/relay.db
-  MISTRI_DB is still accepted as a legacy fallback.
 `);
 }
 

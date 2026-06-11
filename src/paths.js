@@ -2,9 +2,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const RELAY_DIR = ".relay";
-const LEGACY_DIR = ".mistri";
 const DB_FILE = "relay.db";
-const LEGACY_DB_FILE = "mistri.db";
 
 function workspaceFromDbPath(dbPath) {
   const resolved = path.resolve(dbPath);
@@ -30,15 +28,6 @@ function findWorkspace(startDir = process.cwd(), dbPath) {
         root: current,
         relayDir: path.join(current, RELAY_DIR),
         dbPath,
-      };
-    }
-
-    const legacyDbPath = path.join(current, LEGACY_DIR, LEGACY_DB_FILE);
-    if (fs.existsSync(legacyDbPath)) {
-      return {
-        root: current,
-        relayDir: path.join(current, LEGACY_DIR),
-        dbPath: legacyDbPath,
       };
     }
 
@@ -75,8 +64,6 @@ function requireWorkspace(cwd = process.cwd(), dbPath) {
 module.exports = {
   RELAY_DIR,
   DB_FILE,
-  LEGACY_DIR,
-  LEGACY_DB_FILE,
   findWorkspace,
   requireWorkspace,
   workspaceFromDbPath,
