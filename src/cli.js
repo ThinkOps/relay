@@ -603,10 +603,26 @@ Common commands:
   relay agent ack 34 --agent dev-agent --role developer [--json]
   relay agent list --json
 
+PM card writing:
+  Title: imperative, <=60 chars, names the outcome. Example: "Add rate limiting to login endpoint".
+  Problem: 2-4 present-tense sentences. State what is true today and why it is a problem; do not describe the solution.
+  Acceptance criteria: 3-7 pass/fail bullets. A tester must be able to verify each one without asking questions.
+  User story: use only when there is a real user and outcome. Empty is better than boilerplate.
+  Definition of done: mechanical checklist only: tests pass, PR linked, validation_evidence written.
+  Size: one card = one agent session = one PR. Run relay card lint before submit.
+
+Model card:
+  Title: Add rate limiting to login endpoint
+  Story: As an account holder, I want repeated failed logins throttled so my account cannot be brute-forced.
+  Problem: /api/login accepts unlimited attempts. A script can try thousands of passwords per minute against one account. We have no throttling at any layer.
+  AC: >5 failed attempts per IP per minute returns 429; Successful logins are unaffected; The limit resets after 60s; Integration test covers limit, reset, and happy path.
+  DoD: tests pass, PR linked, validation_evidence layer written.
+
 PM scope commands:
   relay project create "Mobile App" [--description "..."]
   relay feature create "Login Revamp" --project "Mobile App" [--summary "..."]
   relay card create --project "Mobile App" --feature "Login Revamp" --title "Add reset" --story "As a user..." --problem "..." --ac "..." --done "..." --points 3 --sprint "Sprint 1" --role developer
+  relay card lint 12 --json
   relay card submit 12 --actor pm-agent
   relay card revise 12 --ac "Updated criterion" --note "Addressed admin feedback" --submit
 

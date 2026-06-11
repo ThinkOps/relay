@@ -41,3 +41,20 @@ relay context supersede <layer-id> --body-file notes.md --title "Updated impleme
 - User story: only when there is a real user and outcome. Leave it empty instead of adding boilerplate.
 - Definition of done: mechanical checklist only, such as tests pass, PR linked, validation_evidence written.
 - Size: one card should fit one agent session and one PR.
+
+## Model Card
+
+Title: Add rate limiting to the login endpoint
+
+Story: As an account holder, I want repeated failed logins throttled so that my account cannot be brute-forced.
+
+Problem: `/api/login` accepts unlimited attempts. A script can try thousands of passwords per minute against one account. We have no throttling at any layer.
+
+Acceptance criteria:
+
+1. More than 5 failed attempts per IP per minute returns 429.
+2. Successful logins are unaffected.
+3. The limit resets after 60 seconds.
+4. Integration test covers limit, reset, and the happy path.
+
+Definition of done: tests pass, PR linked, validation_evidence layer written.

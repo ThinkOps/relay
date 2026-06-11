@@ -213,6 +213,8 @@ Recommended agile fields:
 - `--points`: story points from 0 to 100
 - `--sprint`: sprint or iteration label
 
+Run `relay card lint <id> --json` before submitting. Lint warnings never block submission; they are deterministic prompts that help PM agents write cards an admin can approve quickly.
+
 ## CLI Reference
 
 ```bash
