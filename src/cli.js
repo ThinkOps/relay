@@ -422,40 +422,70 @@ function inferredHeartbeatRole(area, action, flags) {
 }
 
 function printHelp() {
-  console.log(`Mistri
+  console.log(`Mistri - admin-first project board for agent work
 
-Usage:
-  mistri init
+Agent contract:
+  Use one shared Mistri DB. Do not run mistri init inside every agent worktree.
+  Prefer --json for machine-readable output.
+  Check your inbox before work, after handoffs, and while waiting for feedback.
+  Acknowledge notifications only after you have handled them.
+  Post Markdown notes for progress, blockers, review findings, and QA evidence.
+
+Agent loop:
+  export MISTRI_DB=/path/to/control/.mistri/mistri.db
+  mistri db --json
+  mistri agent heartbeat --agent dev-agent --role developer --json
+  mistri agent inbox --agent dev-agent --role developer --unread --json
+  mistri card show 12 --json
+  mistri claim 12 --agent dev-agent --role developer --json
+  mistri note 12 $'## Progress\\n- Implemented core path\\n- Tests pending' --actor dev-agent --role developer
+  mistri move 12 review --actor dev-agent --role developer --json
+  mistri agent ack 34 --agent dev-agent --role developer --json
+
+Role handoffs:
+  developer: claim ready cards, post progress, move in_progress -> review
+  reviewer: post review findings, move review -> testing or review -> in_progress
+  tester: post QA evidence, move testing -> in_progress when fixes are needed
+  pm: create/revise/submit cards, respond to admin needs-changes
+  admin: approve, request changes, reject, pause, cancel, mark done
+
+Common commands:
+  mistri board --json
+  mistri card list [--status pending_approval] [--json]
+  mistri card show 12 --json
+  mistri note 12 "Status update" --actor dev-agent --role developer
+  mistri link 12 --branch feature/reset --commit abc123 --pr https://...
+  mistri agent inbox --agent dev-agent --role developer [--unread] [--json]
+  mistri agent ack 34 --agent dev-agent --role developer [--json]
+  mistri agent list --json
+
+PM scope commands:
   mistri project create "Mobile App" [--description "..."]
-  mistri project list
   mistri feature create "Login Revamp" --project "Mobile App" [--summary "..."]
-  mistri card create --project "Mobile App" --feature "Login Revamp" --title "Add reset" --story "As a user..." --problem "..." --ac "..." --done "..." --points 3 --sprint "Sprint 1"
-  mistri card submit 1
-  mistri card revise 1 --ac "Updated criterion" --note "Addressed admin feedback" [--submit]
-  mistri card show 1
-  mistri card list [--status pending_approval]
-  mistri admin approve 1
-  mistri admin changes 1 --reason "Acceptance criteria too vague"
-  mistri admin reject 1 --reason "Not a priority"
-  mistri admin done 1
-  mistri claim 1 --role developer [--agent dev-agent]
-  mistri move 1 review --role developer
-  mistri note 1 "Implemented reset token flow" [--role developer]
-  mistri agent heartbeat --role developer [--agent dev-agent]
-  mistri agent inbox [--agent dev-agent] [--role developer] [--unread]
-  mistri agent ack 1 [--agent dev-agent] [--role developer]
-  mistri agent list
-  mistri board
+  mistri card create --project "Mobile App" --feature "Login Revamp" --title "Add reset" --story "As a user..." --problem "..." --ac "..." --done "..." --points 3 --sprint "Sprint 1" --role developer
+  mistri card submit 12 --actor pm-agent
+  mistri card revise 12 --ac "Updated criterion" --note "Addressed admin feedback" --submit
+
+Admin commands:
+  mistri admin approve 12 --actor admin
+  mistri admin changes 12 --reason "Acceptance criteria too vague" --actor admin
+  mistri admin reject 12 --reason "Not a priority" --actor admin
+  mistri admin done 12 --actor admin
+
+Workspace commands:
+  mistri init
   mistri db
   mistri ui [--port 4173]
 
-Global:
-  --actor name
-  --db path
-  --json
+Global flags:
+  --actor name     event actor; defaults to $USER
+  --agent name     agent identity for heartbeat/claim/inbox
+  --role role      admin|pm|developer|reviewer|tester
+  --db path        shared control DB path
+  --json           machine-readable output
 
 Environment:
-  MISTRI_DB=/path/to/.mistri/mistri.db
+  MISTRI_DB=/path/to/control/.mistri/mistri.db
 `);
 }
 
