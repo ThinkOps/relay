@@ -34,6 +34,7 @@ const WIP_LIMITS = {
 const state = {
   agents: [],
   board: {},
+  contextGaps: null,
   inbox: null,
   navigation: null,
 };
@@ -49,16 +50,18 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 
 async function loadApp() {
-  const [navigation, board, agents, inbox] = await Promise.all([
+  const [navigation, board, agents, inbox, contextGaps] = await Promise.all([
     request("/api/navigation"),
     request(boardPath()),
     request("/api/agents"),
     request("/api/inbox"),
+    request("/api/context/gaps"),
   ]);
   state.navigation = navigation;
   state.board = board;
   state.agents = agents;
   state.inbox = inbox;
+  state.contextGaps = contextGaps;
   renderNavigation(navigation);
   render(board);
   const cardId = currentFilter().card;
@@ -111,7 +114,7 @@ function render(board) {
   }
 
   if (inboxMode) {
-    renderInboxView(state.inbox);
+    renderInboxView(state.inbox, state.contextGaps);
     return;
   }
 
@@ -132,7 +135,7 @@ function renderNavigation(navigation) {
       {
         active: navigation.inboxCounts.waiting,
         pending: navigation.inboxCounts.action,
-        total: navigation.inboxCounts.action + navigation.inboxCounts.waiting,
+        total: navigation.inboxCounts.action + navigation.inboxCounts.waiting + (navigation.inboxCounts.gaps || 0),
       },
       "/?view=inbox",
       filter.view === "inbox",
@@ -399,13 +402,14 @@ function agentWorkItem(card) {
   return node;
 }
 
-function renderInboxView(inbox) {
+function renderInboxView(inbox, gaps) {
   const root = document.getElementById("inboxView");
   root.replaceChildren();
 
   const actionItems = inbox?.actionItems || [];
   const waitingItems = inbox?.waitingItems || [];
   const updateItems = inbox?.updateItems || [];
+  const gapItems = contextGapItems(gaps || inbox?.contextGaps);
   const updateCount = inbox?.counts?.updates ?? updateItems.length;
 
   const header = el("div", "inbox-hero");
@@ -413,10 +417,11 @@ function renderInboxView(inbox) {
     inboxStat("Needs Admin", actionItems.length),
     inboxStat("Waiting", waitingItems.length),
     inboxStat("Agent Updates", updateCount),
+    inboxStat("Context Gaps", gapItems.length),
   );
   root.append(header);
 
-  if (actionItems.length + waitingItems.length + updateItems.length === 0) {
+  if (actionItems.length + waitingItems.length + updateItems.length + gapItems.length === 0) {
     root.append(empty("Inbox is clear."));
     return;
   }
@@ -424,6 +429,7 @@ function renderInboxView(inbox) {
   root.append(
     inboxBlock("Needs Admin", actionItems, "No admin decisions waiting."),
     inboxBlock("Waiting On Agents", waitingItems, "No PM or agent follow-up waiting."),
+    inboxBlock("Context Gaps", gapItems, "No context gaps found."),
     inboxBlock("Recent Agent Updates", updateItems, "No recent agent updates."),
   );
 }
@@ -452,16 +458,20 @@ function inboxBlock(title, items, emptyText) {
 function inboxItem(item) {
   const node = el("article", "inbox-item");
   node.dataset.tone = item.tone;
-  node.tabIndex = 0;
-  node.setAttribute("role", "button");
-  node.setAttribute("aria-label", `Open ${item.title}`);
-  node.addEventListener("click", () => openCard(item.cardId));
-  node.addEventListener("keydown", (event) => {
-    if (event.key === "Enter" || event.key === " ") {
-      event.preventDefault();
-      openCard(item.cardId);
-    }
-  });
+  if (item.cardId) {
+    node.tabIndex = 0;
+    node.setAttribute("role", "button");
+    node.setAttribute("aria-label", `Open ${item.title}`);
+    node.addEventListener("click", () => openCard(item.cardId));
+    node.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        openCard(item.cardId);
+      }
+    });
+  } else {
+    node.classList.add("static");
+  }
 
   const head = el("div", "inbox-item-head");
   head.append(
@@ -474,11 +484,11 @@ function inboxItem(item) {
     el("h3", "", item.title),
     el("p", "", plainPreview(item.message || "No message.")),
     meta([
-      `#${item.cardId}`,
+      item.cardId ? `#${item.cardId}` : "",
       item.projectName,
       item.featureName,
-      label(item.cardStatus),
-      roleLabel(item.role),
+      item.cardStatus ? label(item.cardStatus) : "",
+      item.role ? roleLabel(item.role) : "",
       item.actor,
       item.storyPoints > 0 ? `${item.storyPoints}sp` : "",
       item.sprint,
@@ -489,6 +499,55 @@ function inboxItem(item) {
   const actions = inboxActions(item);
   if (actions) node.append(actions);
   return node;
+}
+
+function contextGapItems(gaps) {
+  if (!gaps) return [];
+  return [
+    ...(gaps.missingProjectMaps || []).map((project) => ({
+      action: "context_gap",
+      actor: "",
+      cardId: null,
+      cardStatus: "",
+      createdAt: project.createdAt,
+      featureName: "",
+      id: `project-map-${project.id}`,
+      kind: "context_gap",
+      label: "Project map missing",
+      message: "Agents will re-explore this project until a project_map layer exists.",
+      projectName: project.name,
+      role: "",
+      title: project.name,
+      tone: "waiting",
+    })),
+    ...(gaps.reviewWithoutNotes || []).map((card) =>
+      contextCardGap(card, "Missing implementation_notes", "Reviewer lacks implementation context.", "review"),
+    ),
+    ...(gaps.testingWithoutEvidence || []).map((card) =>
+      contextCardGap(card, "Missing validation_evidence", "Tester lacks explicit validation claims.", "testing"),
+    ),
+  ];
+}
+
+function contextCardGap(card, labelText, message, tone) {
+  return {
+    action: "context_gap",
+    actor: card.assignedAgent,
+    cardId: card.id,
+    cardStatus: card.status,
+    createdAt: card.updatedAt,
+    featureName: card.featureName,
+    id: `context-gap-${card.id}-${labelText}`,
+    kind: "context_gap",
+    label: labelText,
+    message,
+    projectName: card.projectName,
+    role: card.assignedRole || card.expectedRole,
+    sprint: card.sprint,
+    storyPoints: card.storyPoints,
+    title: card.title,
+    tone,
+  };
 }
 
 function inboxActions(item) {
@@ -526,7 +585,10 @@ function selectAgent(name) {
 }
 
 async function openCard(id, options = {}) {
-  const card = await request(`/api/cards/${id}`);
+  const [card, contextLayers] = await Promise.all([
+    request(`/api/cards/${id}`),
+    request(`/api/cards/${id}/context?all=1`),
+  ]);
   const root = document.getElementById("cardDetail");
   root.replaceChildren();
 
@@ -543,6 +605,7 @@ async function openCard(id, options = {}) {
       card.sprint,
     ]),
     handoffPanel(card),
+    contextBlock(contextLayers),
     noteForm(card),
     timelineBlock(card.events),
     block("User Story", card.userStory),
@@ -619,6 +682,44 @@ function listBlock(title, values) {
     list.append(item);
   }
   node.append(el("h3", "", title), list);
+  return node;
+}
+
+function contextBlock(layers) {
+  const node = el("section", "detail-block context-section");
+  const active = (layers || []).filter((layer) => !layer.supersededById);
+  const superseded = (layers || []).filter((layer) => layer.supersededById);
+  node.append(el("h3", "", "Context"));
+
+  if (active.length === 0) {
+    node.append(empty("No active context layers."));
+  } else {
+    const list = el("div", "context-list");
+    for (const layer of active) list.append(contextLayerNode(layer));
+    node.append(list);
+  }
+
+  if (superseded.length > 0) {
+    const details = el("details", "context-history");
+    details.append(el("summary", "", `${superseded.length} superseded layer${superseded.length === 1 ? "" : "s"}`));
+    const list = el("div", "context-list");
+    for (const layer of superseded) list.append(contextLayerNode(layer));
+    details.append(list);
+    node.append(details);
+  }
+
+  return node;
+}
+
+function contextLayerNode(layer) {
+  const node = el("article", "context-layer");
+  const head = el("div", "context-layer-head");
+  head.append(
+    el("span", "context-type", layerTypeLabel(layer.layerType)),
+    el("strong", "", layer.title),
+    el("span", "context-age", `${ageLabel(layer.createdAt)} · ${layer.actor}/${roleLabel(layer.role)}`),
+  );
+  node.append(head, markdownBlock(layer.bodyMarkdown || "None"));
   return node;
 }
 
@@ -898,6 +999,21 @@ function formatTime(value) {
     minute: "2-digit",
     month: "short",
   });
+}
+
+function ageLabel(value) {
+  const date = new Date(value);
+  const delta = Date.now() - date.getTime();
+  if (Number.isNaN(delta)) return value;
+  const minutes = Math.max(0, Math.floor(delta / 60000));
+  if (minutes < 60) return `${minutes}m old`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 48) return `${hours}h old`;
+  return `${Math.floor(hours / 24)}d old`;
+}
+
+function layerTypeLabel(value) {
+  return String(value || "").replaceAll("_", " ");
 }
 
 function notePlaceholder(status) {

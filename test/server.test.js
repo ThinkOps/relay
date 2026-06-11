@@ -69,6 +69,22 @@ test("server exposes board data and protects mutations with token", async () => 
     role: "developer",
     message: "## Progress\\n- Presence chip is wired",
   });
+  app.addContextLayer({
+    project: "Relay",
+    type: "project_map",
+    title: "Relay project map",
+    body: "Relay server code lives in src/server.js.",
+    actor: "mapper-agent",
+    role: "developer",
+  });
+  app.addContextLayer({
+    card: claimedCard.id,
+    type: "implementation_notes",
+    title: "Presence implementation",
+    body: "Updated agent presence rendering.",
+    actor: "dev-agent",
+    role: "developer",
+  });
   app.heartbeat({ agent: "dev-agent", role: "developer" });
   app.close();
 
@@ -98,8 +114,26 @@ test("server exposes board data and protects mutations with token", async () => 
     assert.equal(inbox.actionItems[0].cardId, card.id);
     assert.equal(inbox.actionItems[0].label, "Needs approval");
     assert.equal(inbox.counts.action, 1);
+    assert.equal(inbox.counts.gaps, 1);
+    assert.equal(inbox.contextGaps.missingProjectMaps[0].name, "Mobile App");
     assert.equal(inbox.updateItems[0].label, "Update");
     assert.match(inbox.updateItems[0].message, /Progress/);
+
+    const briefResponse = await fetch(`${server.url}/api/cards/${claimedCard.id}/brief?role=reviewer`);
+    const brief = await briefResponse.json();
+    assert.equal(brief.layers.project_map.title, "Relay project map");
+    assert.equal(brief.layers.implementation_notes.title, "Presence implementation");
+    assert.equal(Object.hasOwn(brief.card, "events"), false);
+
+    const contextResponse = await fetch(`${server.url}/api/cards/${claimedCard.id}/context`);
+    const context = await contextResponse.json();
+    assert.equal(context.length, 1);
+    assert.equal(context[0].layerType, "implementation_notes");
+
+    const gapsResponse = await fetch(`${server.url}/api/context/gaps`);
+    const gaps = await gapsResponse.json();
+    assert.equal(gaps.missingProjectMaps.length, 1);
+    assert.equal(gaps.missingProjectMaps[0].name, "Mobile App");
 
     const agentsResponse = await fetch(`${server.url}/api/agents`);
     const agents = await agentsResponse.json();
@@ -141,6 +175,41 @@ test("server exposes board data and protects mutations with token", async () => 
     const body = await approved.json();
     assert.equal(approved.status, 200);
     assert.equal(body.status, "ready");
+
+    const createdContextResponse = await fetch(`${server.url}/api/context`, {
+      method: "POST",
+      body: JSON.stringify({
+        actor: "tester",
+        body: "Manual QA passed.",
+        card: claimedCard.id,
+        role: "tester",
+        title: "QA evidence",
+        type: "validation_evidence",
+      }),
+      headers: {
+        "Content-Type": "application/json",
+        "X-Relay-Token": server.token,
+      },
+    });
+    const createdContext = await createdContextResponse.json();
+    assert.equal(createdContextResponse.status, 200);
+    assert.equal(createdContext.layerType, "validation_evidence");
+
+    const supersededContextResponse = await fetch(`${server.url}/api/context/${createdContext.id}/supersede`, {
+      method: "POST",
+      body: JSON.stringify({
+        actor: "tester",
+        body: "Manual QA and smoke tests passed.",
+        role: "tester",
+      }),
+      headers: {
+        "Content-Type": "application/json",
+        "X-Relay-Token": server.token,
+      },
+    });
+    const supersededContext = await supersededContextResponse.json();
+    assert.equal(supersededContextResponse.status, 200);
+    assert.equal(supersededContext.supersedesId, createdContext.id);
   } finally {
     await server.close();
   }

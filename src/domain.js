@@ -441,6 +441,26 @@ function createRelay({ dbPath, cwd = process.cwd() }) {
     }, {});
   }
 
+  function contextGaps() {
+    const projects = store.listProjects();
+    const cards = store.listCards();
+    return {
+      missingProjectMaps: projects.filter(
+        (project) => store.listContextLayers({ projectId: project.id, layerType: "project_map" }).length === 0,
+      ),
+      reviewWithoutNotes: cards.filter(
+        (card) =>
+          card.status === "review" &&
+          store.listContextLayers({ cardId: card.id, layerType: "implementation_notes" }).length === 0,
+      ),
+      testingWithoutEvidence: cards.filter(
+        (card) =>
+          card.status === "testing" &&
+          store.listContextLayers({ cardId: card.id, layerType: "validation_evidence" }).length === 0,
+      ),
+    };
+  }
+
   function heartbeat(input = {}) {
     return store.upsertAgentHeartbeat({
       agent: requiredText(input.agent || input.actor, "Agent"),
@@ -752,6 +772,7 @@ function createRelay({ dbPath, cwd = process.cwd() }) {
     claimCard,
     close,
     completeCard,
+    contextGaps,
     createCard,
     createFeature,
     createProject,

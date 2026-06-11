@@ -93,8 +93,46 @@ async function handleApi({ request, response, url, dbPath, cwd, token }) {
       return;
     }
 
+    if (request.method === "GET" && parts[1] === "cards" && parts[2] && parts[3] === "brief") {
+      sendJson(response, 200, app.briefCard(parts[2], { role: url.searchParams.get("role") || "developer" }));
+      return;
+    }
+
+    if (request.method === "GET" && parts[1] === "cards" && parts[2] && parts[3] === "context") {
+      sendJson(response, 200, app.listContextLayers({
+        card: parts[2],
+        includeSuperseded: ["1", "true"].includes(url.searchParams.get("all")),
+      }));
+      return;
+    }
+
+    if (request.method === "GET" && url.pathname === "/api/context/gaps") {
+      sendJson(response, 200, app.contextGaps());
+      return;
+    }
+
     if (request.method === "GET" && parts[1] === "cards" && parts[2]) {
       sendJson(response, 200, app.getCard(parts[2]));
+      return;
+    }
+
+    if (request.method === "POST" && parts[1] === "context" && !parts[2]) {
+      const body = await readBody(request);
+      sendJson(response, 200, app.addContextLayer({
+        ...body,
+        actor: body.actor || "admin",
+        role: body.role || "admin",
+      }));
+      return;
+    }
+
+    if (request.method === "POST" && parts[1] === "context" && parts[2] && parts[3] === "supersede") {
+      const body = await readBody(request);
+      sendJson(response, 200, app.supersedeContextLayer(parts[2], {
+        ...body,
+        actor: body.actor || "admin",
+        role: body.role || "admin",
+      }));
       return;
     }
 
@@ -209,6 +247,9 @@ function inboxView(app) {
   const actionItems = [];
   const waitingItems = [];
   const updateItems = [];
+  const contextGaps = app.contextGaps();
+  const contextGapCount =
+    contextGaps.missingProjectMaps.length + contextGaps.reviewWithoutNotes.length + contextGaps.testingWithoutEvidence.length;
 
   for (const card of cards) {
     const latest = card.events.at(-1);
@@ -268,10 +309,12 @@ function inboxView(app) {
     actionItems,
     counts: {
       action: actionItems.length,
-      total: actionItems.length + waitingItems.length + updateItems.length,
+      gaps: contextGapCount,
+      total: actionItems.length + waitingItems.length + updateItems.length + contextGapCount,
       updates: updateItems.length,
       waiting: waitingItems.length,
     },
+    contextGaps,
     updateItems: updateItems.slice(0, 30),
     waitingItems,
   };
