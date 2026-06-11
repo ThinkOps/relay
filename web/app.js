@@ -264,10 +264,14 @@ function cardNode(card) {
     }
   });
 
+  const statusLine = el("div", "card-status-line");
+  statusLine.append(el("span", "status-dot"), el("span", "", label(card.status)));
+
   const heading = el("div", "card-heading");
   heading.append(el("h3", "", card.title), ownerChip(card));
 
   node.append(
+    statusLine,
     heading,
     el("p", "card-context", `${card.projectName} / ${card.featureName}`),
     signalPreview(card),
@@ -310,6 +314,7 @@ function renderAgentsView(agents) {
 
 function agentStat(labelText, value) {
   const node = el("div", "agent-stat");
+  node.dataset.metric = slug(labelText);
   node.append(el("strong", "", String(value)), el("span", "", labelText));
   return node;
 }
@@ -324,6 +329,7 @@ function agentNode(agent, selected) {
   header.append(
     presenceDot(agent.online),
     agentIdentity(agent),
+    roleChip(agent.role),
     el("span", "agent-work-count", `${(agent.activeCards || []).length} active`),
   );
   node.append(header);
@@ -597,16 +603,7 @@ async function openCard(id, options = {}) {
 
   const detail = el("div", "detail");
   detail.append(
-    el("h2", "", card.title),
-    meta([
-      `#${card.id}`,
-      card.projectName,
-      card.featureName,
-      label(card.status),
-      card.riskLevel,
-      card.storyPoints > 0 ? `${card.storyPoints}sp` : "",
-      card.sprint,
-    ]),
+    detailHeader(card),
     handoffPanel(card),
     detailAdminActions(card),
     contextBlock(contextLayers),
@@ -658,6 +655,25 @@ function detailAdminActions(card) {
   }
 
   return document.createDocumentFragment();
+}
+
+function detailHeader(card) {
+  const header = el("header", "detail-hero");
+  const kicker = el("div", "detail-kicker");
+  kicker.append(
+    el("span", "ticket-chip", `#${card.id}`),
+    el("span", "", card.projectName),
+    el("span", "", card.featureName),
+  );
+  const status = el("div", "detail-status-row");
+  status.append(
+    el("span", `status-chip ${card.status}`.trim(), label(card.status)),
+    el("span", "priority-chip", `${card.riskLevel || "medium"} risk`),
+    card.storyPoints > 0 ? el("span", "points-chip", `${card.storyPoints} pts`) : document.createDocumentFragment(),
+    card.sprint ? el("span", "points-chip", card.sprint) : document.createDocumentFragment(),
+  );
+  header.append(kicker, el("h2", "", card.title), status);
+  return header;
 }
 
 async function addCardNote(id, form) {
@@ -764,26 +780,35 @@ function noteForm(card) {
   actor.autocomplete = "off";
   actor.setAttribute("aria-label", "Actor");
 
-  const role = el("select", "field-input");
-  role.name = "role";
-  for (const value of ["admin", "pm", "developer", "reviewer", "tester"]) {
-    const option = el("option", "", roleLabel(value));
-    option.value = value;
-    option.selected = value === savedRole;
-    role.append(option);
-  }
-
   const message = el("textarea", "field-input note-message");
   message.name = "message";
   message.placeholder = notePlaceholder(card.status);
   message.rows = 4;
 
   const fields = el("div", "note-fields");
-  fields.append(field("Actor", actor), field("Role", role));
-  const submit = el("button", "action primary", "Add update");
+  fields.append(field("Actor", actor), roleSegment(savedRole));
+  const submit = el("button", "action primary composer-submit", "Post update");
   submit.type = "submit";
   form.append(el("h3", "", "Add Update"), el("p", "form-hint", "Markdown is supported."), fields, message, submit);
   return form;
+}
+
+function roleSegment(savedRole) {
+  const wrapper = el("div", "role-segment");
+  wrapper.setAttribute("role", "radiogroup");
+  wrapper.setAttribute("aria-label", "Role");
+  wrapper.append(el("span", "role-segment-label", "Role"));
+  for (const value of ["admin", "pm", "developer", "reviewer", "tester"]) {
+    const labelNode = el("label", "role-option");
+    const input = el("input");
+    input.type = "radio";
+    input.name = "role";
+    input.value = value;
+    input.checked = value === savedRole;
+    labelNode.append(input, el("span", "", roleLabel(value)));
+    wrapper.append(labelNode);
+  }
+  return wrapper;
 }
 
 function field(labelText, control) {
@@ -824,6 +849,10 @@ function meta(items) {
   const node = el("div", "meta");
   for (const item of items.filter(Boolean)) node.append(el("span", "pill", item));
   return node;
+}
+
+function roleChip(role) {
+  return el("span", `role-chip ${role || ""}`.trim(), roleLabel(role));
 }
 
 function lintChips(warnings) {
@@ -895,6 +924,13 @@ function el(tag, className = "", text = "") {
 
 function label(value) {
   return STATUS_LABELS[value] || String(value).replaceAll("_", " ");
+}
+
+function slug(value) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
 }
 
 function signalPreview(card) {
