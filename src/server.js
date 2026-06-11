@@ -210,6 +210,7 @@ function boardWithEvents(board, app) {
       cards.map((card) => ({
         ...card,
         events: app.getCard(card.id).events,
+        lintWarnings: card.status === "pending_approval" ? app.lintCard(card.id) : [],
       })),
     ]),
   );
@@ -243,6 +244,7 @@ function inboxView(app) {
   const cards = app.listCards().map((card) => ({
     ...card,
     events: app.getCard(card.id).events,
+    lintWarnings: card.status === "pending_approval" ? app.lintCard(card.id) : [],
   }));
   const actionItems = [];
   const waitingItems = [];
@@ -397,6 +399,7 @@ function inboxItem(card, event, input) {
     storyPoints: card.storyPoints,
     title: card.title,
     tone: input.tone,
+    lintWarnings: card.lintWarnings || [],
   };
 }
 

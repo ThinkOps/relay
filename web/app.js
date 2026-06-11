@@ -30,6 +30,12 @@ const WIP_LIMITS = {
   review: 3,
   testing: 3,
 };
+const CANNED_CHANGE_REASONS = [
+  "Too big — split it",
+  "Solution-shaped — state the problem",
+  "Acceptance criteria not testable",
+  "Missing context",
+];
 
 const state = {
   agents: [],
@@ -189,10 +195,7 @@ function renderApprovalQueue(cards) {
     const actions = el("div", "actions");
     actions.append(
       button("Approve", "action primary", () => adminAction("approve", card.id)),
-      button("Changes", "action warning", () => {
-        const reason = window.prompt("Reason");
-        if (reason) adminAction("changes", card.id, { reason });
-      }),
+      ...changeReasonButtons(card.id),
       button("Reject", "action danger", () => {
         const reason = window.prompt("Reason");
         if (reason) adminAction("reject", card.id, { reason });
@@ -268,6 +271,7 @@ function cardNode(card) {
     heading,
     el("p", "card-context", `${card.projectName} / ${card.featureName}`),
     signalPreview(card),
+    lintChips(card.lintWarnings || []),
     meta([`#${card.id}`, label(card.status), `P${card.priority}`, card.storyPoints > 0 ? `${card.storyPoints}sp` : "", card.sprint]),
   );
 
@@ -494,6 +498,8 @@ function inboxItem(item) {
       item.sprint,
     ]),
   );
+  const chips = lintChips(item.lintWarnings || []);
+  if ((item.lintWarnings || []).length > 0) body.append(chips);
 
   node.append(head, body);
   const actions = inboxActions(item);
@@ -555,10 +561,7 @@ function inboxActions(item) {
     const actions = el("div", "actions");
     actions.append(
       button("Approve", "action primary", () => adminAction("approve", item.cardId)),
-      button("Changes", "action warning", () => {
-        const reason = window.prompt("Reason");
-        if (reason) adminAction("changes", item.cardId, { reason });
-      }),
+      ...changeReasonButtons(item.cardId),
       button("Reject", "action danger", () => {
         const reason = window.prompt("Reason");
         if (reason) adminAction("reject", item.cardId, { reason });
@@ -605,6 +608,7 @@ async function openCard(id, options = {}) {
       card.sprint,
     ]),
     handoffPanel(card),
+    detailAdminActions(card),
     contextBlock(contextLayers),
     noteForm(card),
     timelineBlock(card.events),
@@ -632,6 +636,28 @@ async function adminAction(action, id, body = {}) {
     body: JSON.stringify({ actor: "admin", ...body }),
   });
   await loadApp();
+}
+
+function detailAdminActions(card) {
+  const actions = el("div", "detail-actions");
+  if (card.status === "pending_approval") {
+    actions.append(
+      button("Approve", "action primary", () => adminAction("approve", card.id)),
+      ...changeReasonButtons(card.id),
+      button("Reject", "action danger", () => {
+        const reason = window.prompt("Reason");
+        if (reason) adminAction("reject", card.id, { reason });
+      }),
+    );
+    return actions;
+  }
+
+  if (card.status === "testing") {
+    actions.append(button("Done", "action primary", () => adminAction("done", card.id)));
+    return actions;
+  }
+
+  return document.createDocumentFragment();
 }
 
 async function addCardNote(id, form) {
@@ -800,6 +826,12 @@ function meta(items) {
   return node;
 }
 
+function lintChips(warnings) {
+  const node = el("div", "lint-chips");
+  for (const warning of warnings) node.append(el("span", "lint-chip", warning));
+  return node;
+}
+
 function navLink(text, counts, href, active, extraClass = "") {
   const node = el("a", `nav-link ${extraClass}${active ? " active" : ""}`.trim());
   node.href = href;
@@ -826,6 +858,28 @@ function button(text, className, onClick) {
     onClick();
   });
   return node;
+}
+
+function changeReasonButtons(cardId) {
+  return [
+    ...CANNED_CHANGE_REASONS.map((reason) =>
+      button(shortReason(reason), "action warning", () => adminAction("changes", cardId, { reason })),
+    ),
+    button("Custom", "action warning", () => {
+      const reason = window.prompt("Reason");
+      if (reason) adminAction("changes", cardId, { reason });
+    }),
+  ];
+}
+
+function shortReason(reason) {
+  const labels = {
+    "Too big — split it": "Too big",
+    "Solution-shaped — state the problem": "State problem",
+    "Acceptance criteria not testable": "Criteria",
+    "Missing context": "Context",
+  };
+  return labels[reason] || reason;
 }
 
 function empty(text) {

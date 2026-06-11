@@ -29,12 +29,12 @@ test("server exposes board data and protects mutations with token", async () => 
     targetRepo: "local",
     expectedRole: "developer",
     riskLevel: "low",
-    storyPoints: 3,
+    storyPoints: 8,
     sprint: "Sprint 2",
     actor: "pm",
     role: "pm",
   });
-  app.createCard({
+  const mobileCard = app.createCard({
     project: "Mobile App",
     feature: "Login",
     title: "Keep mobile work separate",
@@ -93,9 +93,12 @@ test("server exposes board data and protects mutations with token", async () => 
     const boardResponse = await fetch(`${server.url}/api/board`);
     const board = await boardResponse.json();
     assert.equal(board.pending_approval.length, 1);
-    assert.equal(board.pending_approval[0].storyPoints, 3);
+    assert.equal(board.pending_approval[0].storyPoints, 8);
     assert.equal(board.pending_approval[0].sprint, "Sprint 2");
     assert.equal(board.pending_approval[0].events.at(-1).action, "card.submitted");
+    assert.deepEqual(board.pending_approval[0].lintWarnings, [
+      "Cards should be completable in one agent session. Consider splitting.",
+    ]);
 
     const navigationResponse = await fetch(`${server.url}/api/navigation`);
     const navigation = await navigationResponse.json();
@@ -113,6 +116,9 @@ test("server exposes board data and protects mutations with token", async () => 
     assert.equal(inbox.actionItems.length, 1);
     assert.equal(inbox.actionItems[0].cardId, card.id);
     assert.equal(inbox.actionItems[0].label, "Needs approval");
+    assert.deepEqual(inbox.actionItems[0].lintWarnings, [
+      "Cards should be completable in one agent session. Consider splitting.",
+    ]);
     assert.equal(inbox.counts.action, 1);
     assert.equal(inbox.counts.gaps, 1);
     assert.equal(inbox.contextGaps.missingProjectMaps[0].name, "Mobile App");
@@ -175,6 +181,31 @@ test("server exposes board data and protects mutations with token", async () => 
     const body = await approved.json();
     assert.equal(approved.status, 200);
     assert.equal(body.status, "ready");
+
+    const submittedForChanges = await fetch(`${server.url}/api/cards/${mobileCard.id}/submit`, {
+      method: "POST",
+      body: JSON.stringify({ actor: "pm" }),
+      headers: {
+        "Content-Type": "application/json",
+        "X-Relay-Token": server.token,
+      },
+    });
+    assert.equal(submittedForChanges.status, 200);
+
+    const cannedChange = await fetch(`${server.url}/api/admin/changes/${mobileCard.id}`, {
+      method: "POST",
+      body: JSON.stringify({ actor: "admin", reason: "Missing context" }),
+      headers: {
+        "Content-Type": "application/json",
+        "X-Relay-Token": server.token,
+      },
+    });
+    const changedCard = await cannedChange.json();
+    assert.equal(cannedChange.status, 200);
+    assert.equal(changedCard.status, "needs_changes");
+    const changedDetail = await fetch(`${server.url}/api/cards/${mobileCard.id}`);
+    const changedBody = await changedDetail.json();
+    assert.equal(changedBody.events.at(-1).message, "Missing context");
 
     const createdContextResponse = await fetch(`${server.url}/api/context`, {
       method: "POST",
