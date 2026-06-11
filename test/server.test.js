@@ -14,11 +14,12 @@ function tempDb() {
 test("server exposes board data and protects mutations with token", async () => {
   const dbPath = tempDb();
   const app = createRelay({ dbPath, cwd: process.cwd() });
-  app.createProject({ name: "Relay", actor: "admin", role: "admin" });
-  app.createFeature({ project: "Relay", name: "Admin Gate", actor: "pm", role: "pm" });
-  app.createFeature({ project: "Relay", name: "Board Views", actor: "pm", role: "pm" });
-  app.createProject({ name: "Mobile App", actor: "admin", role: "admin" });
-  app.createFeature({ project: "Mobile App", name: "Login", actor: "pm", role: "pm" });
+  app.createFeature({ name: "Admin Gate", actor: "pm", role: "pm" });
+  app.createProject({ feature: "Admin Gate", name: "Relay", actor: "admin", role: "admin" });
+  app.createFeature({ name: "Board Views", actor: "pm", role: "pm" });
+  app.createProject({ feature: "Board Views", name: "Relay", actor: "admin", role: "admin" });
+  app.createFeature({ name: "Login", actor: "pm", role: "pm" });
+  app.createProject({ feature: "Login", name: "Mobile App", actor: "admin", role: "admin" });
   const card = app.createCard({
     project: "Relay",
     feature: "Admin Gate",
@@ -70,9 +71,41 @@ test("server exposes board data and protects mutations with token", async () => 
     message: "## Progress\\n- Presence chip is wired",
   });
   app.addContextLayer({
-    project: "Relay",
+    feature: "Admin Gate",
+    type: "feature_brief",
+    title: "Admin gate brief",
+    body: "Admin approval protects every card before execution.",
+    actor: "pm",
+    role: "pm",
+  });
+  app.addContextLayer({
+    feature: "Board Views",
+    type: "feature_brief",
+    title: "Board views brief",
+    body: "Board views make active work and agent state visible.",
+    actor: "pm",
+    role: "pm",
+  });
+  app.addContextLayer({
+    feature: "Login",
+    type: "feature_brief",
+    title: "Login brief",
+    body: "Mobile login work is separate from Relay admin work.",
+    actor: "pm",
+    role: "pm",
+  });
+  app.addContextLayer({
+    project: "Admin Gate:Relay",
     type: "project_map",
-    title: "Relay project map",
+    title: "Relay admin gate map",
+    body: "Relay approval code lives in src/domain.js.",
+    actor: "mapper-agent",
+    role: "developer",
+  });
+  app.addContextLayer({
+    project: "Board Views:Relay",
+    type: "project_map",
+    title: "Relay board views map",
     body: "Relay server code lives in src/server.js.",
     actor: "mapper-agent",
     role: "developer",
@@ -102,13 +135,13 @@ test("server exposes board data and protects mutations with token", async () => 
 
     const navigationResponse = await fetch(`${server.url}/api/navigation`);
     const navigation = await navigationResponse.json();
-    const relay = navigation.projects.find((project) => project.name === "Relay");
-    const adminGate = relay.features.find((feature) => feature.name === "Admin Gate");
+    const adminGate = navigation.features.find((feature) => feature.name === "Admin Gate");
+    const relay = adminGate.projects.find((project) => project.name === "Relay");
     assert.equal(navigation.counts.total, 3);
     assert.equal(navigation.onlineAgents.length, 1);
     assert.equal(navigation.onlineAgents[0].agent, "dev-agent");
     assert.equal(navigation.inboxCounts.action, 1);
-    assert.equal(relay.counts.total, 2);
+    assert.equal(relay.counts.total, 1);
     assert.equal(adminGate.counts.pending, 1);
 
     const inboxResponse = await fetch(`${server.url}/api/inbox`);
@@ -127,7 +160,8 @@ test("server exposes board data and protects mutations with token", async () => 
 
     const briefResponse = await fetch(`${server.url}/api/cards/${claimedCard.id}/brief?role=reviewer`);
     const brief = await briefResponse.json();
-    assert.equal(brief.layers.project_map.title, "Relay project map");
+    assert.equal(brief.layers.feature_brief.title, "Board views brief");
+    assert.equal(brief.layers.project_map.title, "Relay board views map");
     assert.equal(brief.layers.implementation_notes.title, "Presence implementation");
     assert.equal(Object.hasOwn(brief.card, "events"), false);
 

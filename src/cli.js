@@ -115,6 +115,7 @@ function dispatch(app, env, parsed, area, action, rest, cwd) {
   if (area === "project") {
     if (action === "create") {
       return app.createProject({
+        feature: requiredFlag(flags, "feature"),
         name: one(rest, "Project name"),
         description: flags.description,
         actor,
@@ -123,14 +124,13 @@ function dispatch(app, env, parsed, area, action, rest, cwd) {
     }
 
     if (action === "list") {
-      return app.listProjects();
+      return app.listProjects({ feature: flags.feature });
     }
   }
 
   if (area === "feature") {
     if (action === "create") {
       return app.createFeature({
-        project: requiredFlag(flags, "project"),
         name: one(rest, "Feature name"),
         summary: flags.summary,
         actor,
@@ -139,10 +139,7 @@ function dispatch(app, env, parsed, area, action, rest, cwd) {
     }
 
     if (action === "list") {
-      const project = requiredFlag(flags, "project");
-      const found = app.listProjects().find((item) => item.name === project);
-      if (!found) throw new Error(`Project not found: ${project}`);
-      return app.listFeatures(found.id);
+      return app.listFeatures();
     }
   }
 
@@ -416,7 +413,7 @@ function printBoard(board) {
     for (const card of cards) {
       const points = card.storyPoints > 0 ? ` ${card.storyPoints}sp` : "";
       const sprint = card.sprint ? ` ${card.sprint}` : "";
-      console.log(`  #${card.id} P${card.priority}${points}${sprint} ${card.title} [${card.projectName}/${card.featureName}]`);
+      console.log(`  #${card.id} P${card.priority}${points}${sprint} ${card.title} [${card.featureName}/${card.projectName}]`);
     }
   }
 }
@@ -424,7 +421,7 @@ function printBoard(board) {
 function printBrief(brief) {
   const card = brief.card;
   console.log(`#${card.id} ${card.title}`);
-  console.log(`${card.projectName} / ${card.featureName} / ${card.status}`);
+  console.log(`${card.featureName} / ${card.projectName} / ${card.status}`);
   console.log("");
   console.log(`Next action: ${brief.nextAction}`);
 
@@ -475,7 +472,7 @@ function printNotification(item) {
   const unread = item.readAt ? "read" : "unread";
   const target = item.targetAgent || item.targetRole;
   console.log(
-    `#${item.id} ${unread} -> ${target} card #${item.cardId} ${item.event.action} ${item.card.title} [${item.card.projectName}/${item.card.featureName}]`,
+    `#${item.id} ${unread} -> ${target} card #${item.cardId} ${item.event.action} ${item.card.title} [${item.card.featureName}/${item.card.projectName}]`,
   );
   console.log(`${item.event.role}:${item.event.actor} ${item.event.message}`);
 }
@@ -623,9 +620,11 @@ Model card:
   DoD: tests pass, PR linked, validation_evidence layer written.
 
 PM scope commands:
-  relay project create "Mobile App" [--description "..."]
-  relay feature create "Login Revamp" --project "Mobile App" [--summary "..."]
-  relay card create --project "Mobile App" --feature "Login Revamp" --title "Add reset" --story "As a user..." --problem "..." --ac "..." --done "..." --points 3 --sprint "Sprint 1" --role developer
+  relay feature create "Login Revamp" [--summary "..."]
+  relay project create "Mobile App" --feature "Login Revamp" [--description "..."]
+  relay context add --feature "Login Revamp" --type feature_brief --title "Feature context" --body-file feature.md
+  relay context add --project "Login Revamp:Mobile App" --type project_map --title "Repo map" --body-file map.md
+  relay card create --feature "Login Revamp" --project "Mobile App" --title "Add reset" --story "As a user..." --problem "..." --ac "..." --done "..." --points 3 --sprint "Sprint 1" --role developer
   relay card lint 12 --json
   relay card submit 12 --actor pm-agent
   relay card revise 12 --ac "Updated criterion" --note "Addressed admin feedback" --submit

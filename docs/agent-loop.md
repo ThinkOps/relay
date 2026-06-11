@@ -17,7 +17,7 @@ Before work:
 When starting a card:
 1. relay claim <card-id> --agent <agent-name> --role <role> --json
 2. Read the returned brief. Use relay brief <card-id> --role <role> --json if you need to refresh.
-3. Read active context layers before exploring the repo. project_map is the first stop.
+3. Read active context layers before exploring the repo. feature_brief gives product/cross-project context; project_map is the repo/service map.
 
 During work:
 1. Post progress with relay note <card-id> "...markdown..." --actor <agent-name> --role <role>.

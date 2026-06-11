@@ -15,10 +15,12 @@ function createRelay({ dbPath, cwd = process.cwd() }) {
   const ONLINE_WINDOW_MS = 5 * 60 * 1000;
 
   function createProject(input) {
+    const feature = resolveFeature(input.feature);
     const name = requiredText(input.name, "Project name");
     const git = readGitMetadata(cwd);
 
     const project = store.createProject({
+      featureId: feature.id,
       name,
       description: optionalText(input.description),
       repoPath: optionalText(input.repoPath) || git.repoPath,
@@ -30,16 +32,14 @@ function createRelay({ dbPath, cwd = process.cwd() }) {
       role: role(input.role || "admin"),
       action: "project.created",
       message: project.name,
-      metadata: { projectId: project.id },
+      metadata: { featureId: feature.id, projectId: project.id },
     });
 
     return project;
   }
 
   function createFeature(input) {
-    const project = resolveProject(input.project);
     const feature = store.createFeature({
-      projectId: project.id,
       name: requiredText(input.name, "Feature name"),
       summary: optionalText(input.summary),
       status: enumValue(input.status || "active", FEATURE_STATUSES, "Feature status"),
@@ -50,15 +50,15 @@ function createRelay({ dbPath, cwd = process.cwd() }) {
       role: role(input.role || "pm"),
       action: "feature.created",
       message: feature.name,
-      metadata: { projectId: project.id, featureId: feature.id },
+      metadata: { featureId: feature.id },
     });
 
     return feature;
   }
 
   function createCard(input) {
-    const project = resolveProject(input.project);
-    const feature = resolveFeature(project.id, input.feature);
+    const feature = resolveFeature(input.feature);
+    const project = resolveProject(feature.id, input.project);
     const git = readGitMetadata(cwd);
     const card = store.createCard({
       projectId: project.id,
@@ -92,7 +92,7 @@ function createRelay({ dbPath, cwd = process.cwd() }) {
 
     return {
       ...card,
-      recentSendBacks: store.listRecentSendBacks(project.id),
+      recentSendBacks: store.listRecentSendBacks(feature.id),
     };
   }
 
@@ -423,7 +423,7 @@ function createRelay({ dbPath, cwd = process.cwd() }) {
     }
 
     const recentSendBacks =
-      actingRole === "pm" && card.status === "needs_changes" ? store.listRecentSendBacks(card.projectId) : [];
+      actingRole === "pm" && card.status === "needs_changes" ? store.listRecentSendBacks(card.featureId) : [];
 
     return {
       card,
@@ -445,6 +445,16 @@ function createRelay({ dbPath, cwd = process.cwd() }) {
 
   function listCards(filters = {}) {
     return store.listCards(filters);
+  }
+
+  function listProjects(input = {}) {
+    if (input.feature) {
+      return store.listProjects(resolveFeature(input.feature).id);
+    }
+    if (input.featureId) {
+      return store.listProjects(input.featureId);
+    }
+    return store.listProjects();
   }
 
   function lintCard(id) {
@@ -506,16 +516,16 @@ function createRelay({ dbPath, cwd = process.cwd() }) {
     store.close();
   }
 
-  function resolveProject(value) {
+  function resolveProject(featureId, value) {
     const name = requiredText(value, "Project");
-    const project = store.getProjectByName(name);
+    const project = store.getProjectByName(featureId, name);
     if (!project) throw new Error(`Project not found: ${name}`);
     return project;
   }
 
-  function resolveFeature(projectId, value) {
+  function resolveFeature(value) {
     const name = requiredText(value, "Feature");
-    const feature = store.getFeatureByName(projectId, name);
+    const feature = store.getFeatureByName(name);
     if (!feature) throw new Error(`Feature not found: ${name}`);
     return feature;
   }
@@ -525,7 +535,7 @@ function createRelay({ dbPath, cwd = process.cwd() }) {
     const hasFeature = hasText(input.feature);
     const hasProject = hasText(input.project);
 
-    if (hasCard && (hasFeature || hasProject)) {
+    if (Number(hasCard) + Number(hasFeature) + Number(hasProject) !== 1) {
       throw new Error("Context layer scope must be exactly one of project, feature, or card.");
     }
 
@@ -534,34 +544,32 @@ function createRelay({ dbPath, cwd = process.cwd() }) {
     }
 
     if (hasFeature) {
-      const parsed = parseFeatureScope(input.project, input.feature);
-      const project = resolveProject(parsed.project);
-      const feature = resolveFeature(project.id, parsed.feature);
-      return { kind: "feature", project, feature };
+      return { kind: "feature", feature: resolveFeature(input.feature) };
     }
 
     if (hasProject) {
-      return { kind: "project", project: resolveProject(input.project) };
+      return { kind: "project", project: resolveProjectScope(input.project).project };
     }
 
     throw new Error("Context layer scope must be exactly one of project, feature, or card.");
   }
 
-  function parseFeatureScope(projectValue, featureValue) {
-    const featureText = requiredText(featureValue, "Feature");
-    if (hasText(projectValue)) {
-      return { project: projectValue, feature: featureText };
+  function resolveProjectScope(value) {
+    const text = requiredText(value, "Project");
+    const separator = text.indexOf(":");
+    if (separator > 0 && separator < text.length - 1) {
+      const feature = resolveFeature(text.slice(0, separator));
+      const project = resolveProject(feature.id, text.slice(separator + 1));
+      return { feature, project };
     }
 
-    const separator = featureText.indexOf(":");
-    if (separator > 0 && separator < featureText.length - 1) {
-      return {
-        project: featureText.slice(0, separator),
-        feature: featureText.slice(separator + 1),
-      };
+    const matches = store.listProjectsByName(text);
+    if (matches.length === 0) throw new Error(`Project not found: ${text}`);
+    if (matches.length > 1) {
+      throw new Error(`Project scope is ambiguous: ${text}. Use --project feature:project.`);
     }
 
-    throw new Error("Feature context scope requires --project or --feature project:feature.");
+    return { project: matches[0] };
   }
 
   function requireCard(id) {
@@ -583,7 +591,7 @@ function createRelay({ dbPath, cwd = process.cwd() }) {
   }
 
   function latestBriefLayer(card, layerType) {
-    const scopes = [{ cardId: card.id }, { featureId: card.featureId }, { projectId: card.projectId }];
+    const scopes = [{ cardId: card.id }, { projectId: card.projectId }, { featureId: card.featureId }];
     for (const scope of scopes) {
       const [layer] = store.listContextLayers({ ...scope, layerType });
       if (layer) return layer;
@@ -788,7 +796,7 @@ function createRelay({ dbPath, cwd = process.cwd() }) {
     listContextLayers,
     listFeatures: store.listFeatures,
     listOnlineAgents,
-    listProjects: store.listProjects,
+    listProjects,
     moveCard,
     pauseCard,
     rejectCard,
@@ -872,7 +880,7 @@ function briefEvent(event) {
 function nextBriefAction(card, actingRole) {
   const actions = {
     ready: {
-      developer: `Claim this card with relay claim ${card.id} --role developer, then read project_map before exploring the repo.`,
+      developer: `Claim this card with relay claim ${card.id} --role developer, then read feature_brief and project_map before exploring the repo.`,
     },
     in_progress: {
       developer: "Work from the acceptance criteria, then write implementation_notes and move the card to review.",

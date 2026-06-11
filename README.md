@@ -11,7 +11,7 @@ The first version is intentionally small:
 - Agile-inspired card fields: user story, story points, sprint label, acceptance criteria, definition of done
 - WIP limits surfaced on the board for ready, in-progress, review, and QA
 - Agent presence: recent CLI activity/heartbeats show who is online
-- Project and feature side navigation for filtered kanban boards
+- Feature and project side navigation for filtered kanban boards
 - Append-only event trail for card activity
 - Context layers and bounded briefs for agent handoffs
 - Git repo metadata captured when cards are created
@@ -31,8 +31,8 @@ There are no runtime npm dependencies in v0. The API boundary is the seam where 
 ```bash
 npm run relay -- init
 npm run relay -- db
-npm run relay -- project create "Relay"
-npm run relay -- feature create "Agent Work Control" --project "Relay"
+npm run relay -- feature create "Agent Work Control"
+npm run relay -- project create "Relay" --feature "Agent Work Control"
 ```
 
 ## Shared Agent Setup
@@ -77,8 +77,8 @@ Create a scoped card:
 
 ```bash
 npm run relay -- card create \
-  --project "Relay" \
   --feature "Agent Work Control" \
+  --project "Relay" \
   --title "Build approval-gated CLI" \
   --story "As an admin, I want to approve scoped work before agents start so project execution stays controlled" \
   --problem "Agents need admin approval before execution" \
@@ -127,12 +127,12 @@ npm run ui -- --port 4180
 
 The UI has a left panel for context switching:
 
-- `All Work`: every project and feature
+- `All Work`: every feature and project
 - `Inbox`: admin decisions, waiting follow-up, and recent agent updates
 - `Needs Approval`: cards waiting for admin approval
 - `Agents`: online/offline agents, assigned work, and recent activity
-- project links: one kanban board for that project
 - feature links: one kanban board for that feature
+- project links: one kanban board for that project within the feature
 
 The filters are URL-based:
 
@@ -196,8 +196,8 @@ The board shows WIP limits for flow control:
 
 A card must include:
 
-- project
 - feature
+- project
 - title
 - problem statement
 - acceptance criteria
@@ -220,8 +220,8 @@ Run `relay card lint <id> --json` before submitting. Lint warnings never block s
 
 ```bash
 npm run relay -- help
-npm run relay -- project list
-npm run relay -- feature list --project "Relay"
+npm run relay -- feature list
+npm run relay -- project list --feature "Agent Work Control"
 npm run relay -- card list
 npm run relay -- card show 1
 npm run relay -- brief 1 --role developer --json
@@ -234,6 +234,8 @@ npm run relay -- admin reject 1 --reason "Not a priority"
 npm run relay -- move 1 review --role developer --handoff-file handoff.md
 npm run relay -- note 1 "Implemented reset token flow" --role developer
 npm run relay -- note 1 $'## Review findings\n- Missing error path\n- Add integration test' --role reviewer
+npm run relay -- context add --feature "Agent Work Control" --type feature_brief --title "Feature brief" --body-file feature.md
+npm run relay -- context add --project "Agent Work Control:Relay" --type project_map --title "Repo map" --body-file map.md
 npm run relay -- context add --card 1 --type implementation_notes --title "Backend changes" --body-file notes.md
 npm run relay -- context list --card 1 --json
 npm run relay -- context supersede 2 --body - --title "Updated notes" --json

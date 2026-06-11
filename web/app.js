@@ -158,26 +158,24 @@ function renderNavigation(navigation) {
     ),
   );
 
-  if (navigation.projects.length === 0) {
-    root.append(empty("No projects yet."));
+  if (navigation.features.length === 0) {
+    root.append(empty("No features yet."));
     return;
   }
 
-  for (const project of navigation.projects) {
-    const projectActive = filter.project === String(project.id);
-    const projectNode = el("div", "nav-group");
-    projectNode.append(
-      navLink(project.name, project.counts, `/?project=${project.id}`, projectActive),
-    );
+  for (const feature of navigation.features) {
+    const featureActive = filter.feature === String(feature.id);
+    const featureNode = el("div", "nav-group");
+    featureNode.append(navLink(feature.name, feature.counts, `/?feature=${feature.id}`, featureActive));
 
-    const featureList = el("div", "feature-list");
-    for (const feature of project.features) {
-      featureList.append(
-        navLink(feature.name, feature.counts, `/?feature=${feature.id}`, filter.feature === String(feature.id), "feature-link"),
+    const projectList = el("div", "feature-list");
+    for (const project of feature.projects) {
+      projectList.append(
+        navLink(project.name, project.counts, `/?project=${project.id}`, filter.project === String(project.id), "feature-link"),
       );
     }
-    projectNode.append(featureList);
-    root.append(projectNode);
+    featureNode.append(projectList);
+    root.append(featureNode);
   }
 }
 
@@ -274,7 +272,7 @@ function cardNode(card) {
     statusLine,
     heading,
     ownerChip(card),
-    el("p", "card-context", `${card.projectName} / ${card.featureName}`),
+    el("p", "card-context", `${card.featureName} / ${card.projectName}`),
     signalPreview(card),
     lintChips(card.lintWarnings || []),
     meta([`#${card.id}`, label(card.status), `P${card.priority}`, card.storyPoints > 0 ? `${card.storyPoints}sp` : "", card.sprint]),
@@ -407,7 +405,7 @@ function agentWorkItem(card) {
   });
   node.append(
     el("strong", "", card.title),
-    el("span", "", `${card.projectName} / ${card.featureName}`),
+    el("span", "", `${card.featureName} / ${card.projectName}`),
     meta([`#${card.id}`, label(card.status), card.storyPoints > 0 ? `${card.storyPoints}sp` : "", card.sprint]),
   );
   return node;
@@ -496,8 +494,8 @@ function inboxItem(item) {
     el("p", "", plainPreview(item.message || "No message.")),
     meta([
       item.cardId ? `#${item.cardId}` : "",
-      item.projectName,
       item.featureName,
+      item.projectName,
       item.cardStatus ? label(item.cardStatus) : "",
       item.role ? roleLabel(item.role) : "",
       item.actor,
@@ -517,13 +515,29 @@ function inboxItem(item) {
 function contextGapItems(gaps) {
   if (!gaps) return [];
   return [
+    ...(gaps.missingFeatureBriefs || []).map((feature) => ({
+      action: "context_gap",
+      actor: "",
+      cardId: null,
+      cardStatus: "",
+      createdAt: feature.createdAt,
+      featureName: feature.name,
+      id: `feature-brief-${feature.id}`,
+      kind: "context_gap",
+      label: "Feature brief missing",
+      message: "Agents will miss product and cross-project context until a feature_brief layer exists.",
+      projectName: "",
+      role: "",
+      title: feature.name,
+      tone: "waiting",
+    })),
     ...(gaps.missingProjectMaps || []).map((project) => ({
       action: "context_gap",
       actor: "",
       cardId: null,
       cardStatus: "",
       createdAt: project.createdAt,
-      featureName: "",
+      featureName: project.featureName || "",
       id: `project-map-${project.id}`,
       kind: "context_gap",
       label: "Project map missing",
@@ -663,8 +677,8 @@ function detailHeader(card) {
   const kicker = el("div", "detail-kicker");
   kicker.append(
     el("span", "ticket-chip", `#${card.id}`),
-    el("span", "", card.projectName),
     el("span", "", card.featureName),
+    el("span", "", card.projectName),
   );
   const status = el("div", "detail-status-row");
   status.append(
@@ -1285,15 +1299,15 @@ function contextTitle() {
   if (!state.navigation) return "Board";
 
   if (filter.feature) {
-    for (const project of state.navigation.projects) {
-      const feature = project.features.find((item) => String(item.id) === filter.feature);
-      if (feature) return `${project.name} / ${feature.name}`;
-    }
+    const feature = state.navigation.features.find((item) => String(item.id) === filter.feature);
+    if (feature) return feature.name;
   }
 
   if (filter.project) {
-    const project = state.navigation.projects.find((item) => String(item.id) === filter.project);
-    if (project) return project.name;
+    for (const feature of state.navigation.features) {
+      const project = feature.projects.find((item) => String(item.id) === filter.project);
+      if (project) return `${feature.name} / ${project.name}`;
+    }
   }
 
   return "All Work";

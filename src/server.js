@@ -219,16 +219,16 @@ function boardWithEvents(board, app) {
 function navigation(app) {
   const allCards = app.listCards();
   const inbox = inboxView(app);
-  const projects = app.listProjects().map((project) => {
-    const features = app.listFeatures(project.id).map((feature) => ({
-      ...feature,
-      counts: counts(allCards.filter((card) => card.featureId === feature.id)),
+  const features = app.listFeatures().map((feature) => {
+    const projects = app.listProjects({ featureId: feature.id }).map((project) => ({
+      ...project,
+      counts: counts(allCards.filter((card) => card.projectId === project.id)),
     }));
 
     return {
-      ...project,
-      counts: counts(allCards.filter((card) => card.projectId === project.id)),
-      features,
+      ...feature,
+      counts: counts(allCards.filter((card) => card.featureId === feature.id)),
+      projects,
     };
   });
 
@@ -236,7 +236,7 @@ function navigation(app) {
     counts: counts(allCards),
     inboxCounts: inbox.counts,
     onlineAgents: app.listOnlineAgents(),
-    projects,
+    features,
   };
 }
 
@@ -251,7 +251,10 @@ function inboxView(app) {
   const updateItems = [];
   const contextGaps = app.contextGaps();
   const contextGapCount =
-    contextGaps.missingProjectMaps.length + contextGaps.reviewWithoutNotes.length + contextGaps.testingWithoutEvidence.length;
+    contextGaps.missingFeatureBriefs.length +
+    contextGaps.missingProjectMaps.length +
+    contextGaps.reviewWithoutNotes.length +
+    contextGaps.testingWithoutEvidence.length;
 
   for (const card of cards) {
     const latest = card.events.at(-1);

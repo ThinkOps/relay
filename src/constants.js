@@ -16,17 +16,18 @@ const CARD_STATUSES = [
 const APPROVAL_STATUSES = ["draft", "pending", "approved", "needs_changes", "rejected"];
 const FEATURE_STATUSES = ["active", "paused", "done"];
 const LAYER_TYPES = {
+  feature_brief: { scopes: ["feature"], bodyMax: 8000 },
   project_map: { scopes: ["project"], bodyMax: 8000 },
   implementation_notes: { scopes: ["card"], bodyMax: 4000 },
   validation_evidence: { scopes: ["card"], bodyMax: 4000 },
   handoff_intent: { scopes: ["card"], bodyMax: 2000 },
 };
 const BRIEF_LAYERS = {
-  developer: ["project_map", "handoff_intent", "implementation_notes"],
-  reviewer: ["project_map", "implementation_notes", "validation_evidence"],
-  tester: ["validation_evidence", "implementation_notes"],
-  pm: ["project_map", "handoff_intent"],
-  admin: ["project_map", "implementation_notes", "validation_evidence", "handoff_intent"],
+  developer: ["feature_brief", "project_map", "handoff_intent", "implementation_notes"],
+  reviewer: ["feature_brief", "project_map", "implementation_notes", "validation_evidence"],
+  tester: ["feature_brief", "project_map", "validation_evidence", "implementation_notes"],
+  pm: ["feature_brief", "project_map", "handoff_intent"],
+  admin: ["feature_brief", "project_map", "implementation_notes", "validation_evidence", "handoff_intent"],
 };
 const WIP_LIMITS = {
   ready: 8,

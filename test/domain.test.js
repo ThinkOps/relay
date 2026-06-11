@@ -2,6 +2,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
+const { DatabaseSync } = require("node:sqlite");
 const test = require("node:test");
 const { createRelay } = require("../src/domain");
 
@@ -12,14 +13,13 @@ function tempDb() {
 
 function seededApp() {
   const app = createRelay({ dbPath: tempDb(), cwd: process.cwd() });
-  app.createProject({ name: "Mobile App", actor: "admin", role: "admin" });
   app.createFeature({
-    project: "Mobile App",
     name: "Login Revamp",
     summary: "Improve login flows",
     actor: "pm-agent",
     role: "pm",
   });
+  app.createProject({ feature: "Login Revamp", name: "Mobile App", actor: "admin", role: "admin" });
   return app;
 }
 
@@ -381,6 +381,14 @@ test("context layers add project and card scoped memory", () => {
     role: "pm",
   });
 
+  const featureBrief = app.addContextLayer({
+    feature: "Login Revamp",
+    type: "feature_brief",
+    title: "Login feature brief",
+    body: "Password reset belongs to the login recovery journey.",
+    actor: "pm-agent",
+    role: "pm",
+  });
   const projectMap = app.addContextLayer({
     project: "Mobile App",
     type: "project_map",
@@ -398,12 +406,18 @@ test("context layers add project and card scoped memory", () => {
     role: "developer",
   });
 
+  assert.equal(featureBrief.scope, "feature");
+  assert.equal(featureBrief.layerType, "feature_brief");
   assert.equal(projectMap.scope, "project");
   assert.equal(projectMap.layerType, "project_map");
   assert.equal(projectMap.bodyMarkdown, "## Structure\n- src/auth handles reset flows");
   assert.equal(implementation.scope, "card");
   assert.equal(implementation.cardId, card.id);
 
+  assert.deepEqual(
+    app.listContextLayers({ feature: "Login Revamp" }).map((layer) => layer.id),
+    [featureBrief.id],
+  );
   assert.deepEqual(
     app.listContextLayers({ project: "Mobile App" }).map((layer) => layer.id),
     [projectMap.id],
@@ -440,6 +454,17 @@ test("context layer validation rejects bad scopes, types, and oversized bodies",
     role: "pm",
   });
 
+  assert.throws(
+    () =>
+      app.addContextLayer({
+        project: "Mobile App",
+        feature: "Login Revamp",
+        type: "feature_brief",
+        title: "Bad scope",
+        body: "Cannot be both feature and project scoped.",
+      }),
+    /exactly one of project, feature, or card/,
+  );
   assert.throws(
     () =>
       app.addContextLayer({
@@ -580,6 +605,14 @@ test("brief returns bounded card context with latest active layers", () => {
     role: "pm",
   });
   app.addContextLayer({
+    feature: "Login Revamp",
+    type: "feature_brief",
+    title: "Login feature brief",
+    body: "Reset work must preserve the existing login recovery journey.",
+    actor: "pm-agent",
+    role: "pm",
+  });
+  app.addContextLayer({
     project: "Mobile App",
     type: "project_map",
     title: "Mobile app project map",
@@ -619,6 +652,7 @@ test("brief returns bounded card context with latest active layers", () => {
   const brief = app.briefCard(card.id, { role: "reviewer" });
 
   assert.equal(Object.hasOwn(brief.card, "events"), false);
+  assert.equal(brief.layers.feature_brief.layerType, "feature_brief");
   assert.equal(brief.layers.project_map.layerType, "project_map");
   assert.equal(brief.layers.implementation_notes.id, activeNotes.id);
   assert.equal(brief.layers.validation_evidence.id, evidence.id);
@@ -632,8 +666,16 @@ test("brief returns bounded card context with latest active layers", () => {
 
 test("context gaps return projects and cards missing active context", () => {
   const app = seededApp();
-  app.createProject({ name: "Backend", actor: "admin", role: "admin" });
-  app.createFeature({ project: "Backend", name: "API", actor: "pm-agent", role: "pm" });
+  app.createFeature({ name: "API", actor: "pm-agent", role: "pm" });
+  app.createProject({ feature: "API", name: "Backend", actor: "admin", role: "admin" });
+  app.addContextLayer({
+    feature: "Login Revamp",
+    type: "feature_brief",
+    title: "Login feature brief",
+    body: "Login recovery work spans the mobile app.",
+    actor: "pm-agent",
+    role: "pm",
+  });
   app.addContextLayer({
     project: "Mobile App",
     type: "project_map",
@@ -727,11 +769,90 @@ test("context gaps return projects and cards missing active context", () => {
   app.moveCard(testingCovered.id, { actor: "review-agent", role: "reviewer", status: "testing" });
 
   const gaps = app.contextGaps();
+  assert.deepEqual(gaps.missingFeatureBriefs.map((feature) => feature.name), ["API"]);
   assert.deepEqual(gaps.missingProjectMaps.map((project) => project.name), ["Backend"]);
   assert.deepEqual(gaps.reviewWithoutNotes.map((card) => card.id), [reviewMissing.id]);
   assert.deepEqual(gaps.testingWithoutEvidence.map((card) => card.id), [testingMissing.id]);
   assert.equal(gaps.reviewWithoutNotes[0].projectName, "Mobile App");
   assert.equal(gaps.testingWithoutEvidence[0].featureName, "API");
+
+  app.close();
+});
+
+test("existing project-first databases migrate to feature-first hierarchy", () => {
+  const dbPath = tempDb();
+  const db = new DatabaseSync(dbPath);
+  db.exec(`
+    CREATE TABLE projects (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL UNIQUE,
+      description TEXT NOT NULL DEFAULT '',
+      repo_path TEXT NOT NULL DEFAULT '',
+      repo_remote TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL
+    );
+    CREATE TABLE features (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      project_id INTEGER NOT NULL,
+      name TEXT NOT NULL,
+      summary TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL DEFAULT 'active',
+      created_at TEXT NOT NULL,
+      UNIQUE (project_id, name)
+    );
+    CREATE TABLE cards (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      project_id INTEGER NOT NULL,
+      feature_id INTEGER NOT NULL,
+      title TEXT NOT NULL,
+      user_story TEXT NOT NULL DEFAULT '',
+      problem_statement TEXT NOT NULL,
+      acceptance_criteria TEXT NOT NULL,
+      definition_of_done TEXT NOT NULL,
+      target_repo TEXT NOT NULL,
+      expected_role TEXT NOT NULL,
+      risk_level TEXT NOT NULL,
+      story_points INTEGER NOT NULL DEFAULT 0,
+      sprint TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL,
+      approval_status TEXT NOT NULL,
+      priority INTEGER NOT NULL DEFAULT 3,
+      assigned_role TEXT NOT NULL DEFAULT '',
+      assigned_agent TEXT NOT NULL DEFAULT '',
+      branch TEXT NOT NULL DEFAULT '',
+      commit_sha TEXT NOT NULL DEFAULT '',
+      pr_url TEXT NOT NULL DEFAULT '',
+      created_by_role TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    INSERT INTO projects (id, name, description, repo_path, repo_remote, created_at)
+    VALUES (1, 'Mobile App', 'iOS and Android client', '/repo/mobile', 'git@example.com:mobile/app.git', '2026-06-10T00:00:00.000Z');
+    INSERT INTO features (id, project_id, name, summary, status, created_at)
+    VALUES (1, 1, 'Login Revamp', 'Improve login', 'active', '2026-06-10T00:01:00.000Z');
+    INSERT INTO cards (
+      id, project_id, feature_id, title, user_story, problem_statement, acceptance_criteria,
+      definition_of_done, target_repo, expected_role, risk_level, story_points, sprint, status,
+      approval_status, priority, assigned_role, assigned_agent, branch, commit_sha, pr_url,
+      created_by_role, created_at, updated_at
+    )
+    VALUES (
+      1, 1, 1, 'Migrate this card', '', 'Old DB card should survive.', '["Card is readable"]',
+      'Card is still listed.', 'git@example.com:mobile/app.git', 'developer', 'medium', 3,
+      'Sprint 1', 'draft', 'draft', 3, '', '', '', '', '', 'pm',
+      '2026-06-10T00:02:00.000Z', '2026-06-10T00:02:00.000Z'
+    );
+  `);
+  db.close();
+
+  const app = createRelay({ dbPath, cwd: process.cwd() });
+  const [card] = app.listCards();
+
+  assert.equal(card.title, "Migrate this card");
+  assert.equal(card.featureName, "Login Revamp");
+  assert.equal(card.projectName, "Mobile App");
+  assert.equal(app.listFeatures()[0].name, "Login Revamp");
+  assert.equal(app.listProjects({ feature: "Login Revamp" })[0].name, "Mobile App");
 
   app.close();
 });

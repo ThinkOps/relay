@@ -15,25 +15,37 @@ function openDatabase(dbPath) {
 }
 
 function migrate(db) {
+  if (usesProjectFirstHierarchy(db)) {
+    migrateFeatureFirstHierarchy(db);
+  }
+
+  createSchema(db);
+
+  ensureColumn(db, "cards", "user_story", "TEXT NOT NULL DEFAULT ''");
+  ensureColumn(db, "cards", "story_points", "INTEGER NOT NULL DEFAULT 0");
+  ensureColumn(db, "cards", "sprint", "TEXT NOT NULL DEFAULT ''");
+}
+
+function createSchema(db) {
   db.exec(`
-    CREATE TABLE IF NOT EXISTS projects (
+    CREATE TABLE IF NOT EXISTS features (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL UNIQUE,
-      description TEXT NOT NULL DEFAULT '',
-      repo_path TEXT NOT NULL DEFAULT '',
-      repo_remote TEXT NOT NULL DEFAULT '',
+      summary TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL DEFAULT 'active',
       created_at TEXT NOT NULL
     );
 
-    CREATE TABLE IF NOT EXISTS features (
+    CREATE TABLE IF NOT EXISTS projects (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      project_id INTEGER NOT NULL,
+      feature_id INTEGER NOT NULL,
       name TEXT NOT NULL,
-      summary TEXT NOT NULL DEFAULT '',
-      status TEXT NOT NULL DEFAULT 'active',
+      description TEXT NOT NULL DEFAULT '',
+      repo_path TEXT NOT NULL DEFAULT '',
+      repo_remote TEXT NOT NULL DEFAULT '',
       created_at TEXT NOT NULL,
-      FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
-      UNIQUE (project_id, name)
+      FOREIGN KEY (feature_id) REFERENCES features(id) ON DELETE CASCADE,
+      UNIQUE (feature_id, name)
     );
 
     CREATE TABLE IF NOT EXISTS cards (
@@ -122,14 +134,320 @@ function migrate(db) {
     CREATE INDEX IF NOT EXISTS context_layers_active
       ON context_layers(layer_type) WHERE superseded_by_id IS NULL;
   `);
+}
 
-  ensureColumn(db, "cards", "user_story", "TEXT NOT NULL DEFAULT ''");
-  ensureColumn(db, "cards", "story_points", "INTEGER NOT NULL DEFAULT 0");
-  ensureColumn(db, "cards", "sprint", "TEXT NOT NULL DEFAULT ''");
+function usesProjectFirstHierarchy(db) {
+  if (!tableExists(db, "features") || !tableExists(db, "projects")) return false;
+  const featureColumns = columnsFor(db, "features");
+  const projectColumns = columnsFor(db, "projects");
+  return featureColumns.includes("project_id") && !projectColumns.includes("feature_id");
+}
+
+function migrateFeatureFirstHierarchy(db) {
+  const migrationTables = [
+    "projects",
+    "features",
+    "cards",
+    "events",
+    "agent_heartbeats",
+    "notifications",
+    "context_layers",
+  ].filter((table) => tableExists(db, table));
+
+  db.exec("PRAGMA foreign_keys = OFF");
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    for (const table of migrationTables) {
+      db.exec(`ALTER TABLE ${table} RENAME TO ${table}_relay_old`);
+    }
+
+    createSchema(db);
+    copyHierarchyData(db);
+    copyTableRows(db, "events", [
+      "id",
+      "card_id",
+      "actor",
+      "role",
+      "action",
+      "message",
+      "metadata",
+      "created_at",
+    ]);
+    copyTableRows(db, "agent_heartbeats", ["agent", "role", "last_seen"]);
+    copyTableRows(db, "notifications", [
+      "id",
+      "event_id",
+      "card_id",
+      "target_agent",
+      "target_role",
+      "read_at",
+      "created_at",
+    ]);
+    copyContextLayers(db);
+
+    for (const table of [...migrationTables].reverse()) {
+      db.exec(`DROP TABLE ${table}_relay_old`);
+    }
+    db.exec("COMMIT");
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  } finally {
+    db.exec("PRAGMA foreign_keys = ON");
+  }
+}
+
+function copyHierarchyData(db) {
+  const oldProjects = db.prepare("SELECT * FROM projects_relay_old ORDER BY id ASC").all();
+  const oldFeatures = db
+    .prepare(
+      `
+        SELECT
+          features_relay_old.*,
+          projects_relay_old.name AS project_name,
+          projects_relay_old.description AS project_description,
+          projects_relay_old.repo_path AS project_repo_path,
+          projects_relay_old.repo_remote AS project_repo_remote,
+          projects_relay_old.created_at AS project_created_at
+        FROM features_relay_old
+        JOIN projects_relay_old ON projects_relay_old.id = features_relay_old.project_id
+        ORDER BY features_relay_old.id ASC
+      `,
+    )
+    .all();
+
+  const usedFeatureNames = new Set();
+  const oldFeatureIds = new Set();
+  const projectIdsWithFeatures = new Set();
+  const insertFeature = db.prepare(`
+    INSERT INTO features (id, name, summary, status, created_at)
+    VALUES (?, ?, ?, ?, ?)
+  `);
+  const insertProject = db.prepare(`
+    INSERT INTO projects (id, feature_id, name, description, repo_path, repo_remote, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  for (const feature of oldFeatures) {
+    const featureName = uniqueFeatureName(feature.name, feature.project_name, feature.id, usedFeatureNames);
+    oldFeatureIds.add(feature.id);
+    projectIdsWithFeatures.add(feature.project_id);
+
+    insertFeature.run(feature.id, featureName, feature.summary, feature.status, feature.created_at);
+    insertProject.run(
+      feature.id,
+      feature.id,
+      feature.project_name,
+      feature.project_description,
+      feature.project_repo_path,
+      feature.project_repo_remote,
+      feature.project_created_at,
+    );
+  }
+
+  let nextId = Math.max(0, ...oldFeatures.map((feature) => Number(feature.id) || 0)) + 1;
+  for (const project of oldProjects) {
+    if (projectIdsWithFeatures.has(project.id)) continue;
+    const id = nextId;
+    nextId += 1;
+    const featureName = uniqueFeatureName(project.name, "Project", id, usedFeatureNames);
+    oldFeatureIds.add(id);
+    insertFeature.run(id, featureName, "", "active", project.created_at);
+    insertProject.run(id, id, project.name, project.description, project.repo_path, project.repo_remote, project.created_at);
+  }
+
+  if (!tableExists(db, "cards_relay_old")) return;
+  const insertCard = db.prepare(`
+    INSERT INTO cards (
+      id,
+      project_id,
+      feature_id,
+      title,
+      user_story,
+      problem_statement,
+      acceptance_criteria,
+      definition_of_done,
+      target_repo,
+      expected_role,
+      risk_level,
+      story_points,
+      sprint,
+      status,
+      approval_status,
+      priority,
+      assigned_role,
+      assigned_agent,
+      branch,
+      commit_sha,
+      pr_url,
+      created_by_role,
+      created_at,
+      updated_at
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  for (const card of db.prepare("SELECT * FROM cards_relay_old ORDER BY id ASC").all()) {
+    const featureId = card.feature_id;
+    if (!oldFeatureIds.has(featureId)) continue;
+    insertCard.run(
+      card.id,
+      featureId,
+      featureId,
+      card.title,
+      card.user_story ?? "",
+      card.problem_statement,
+      card.acceptance_criteria,
+      card.definition_of_done,
+      card.target_repo,
+      card.expected_role,
+      card.risk_level,
+      card.story_points ?? 0,
+      card.sprint ?? "",
+      card.status,
+      card.approval_status,
+      card.priority,
+      card.assigned_role,
+      card.assigned_agent,
+      card.branch,
+      card.commit_sha,
+      card.pr_url,
+      card.created_by_role,
+      card.created_at,
+      card.updated_at,
+    );
+  }
+}
+
+function uniqueFeatureName(name, parentName, id, usedFeatureNames) {
+  let candidate = String(name || "").trim() || `Feature ${id}`;
+  if (!usedFeatureNames.has(candidate)) {
+    usedFeatureNames.add(candidate);
+    return candidate;
+  }
+
+  const parentSuffix = String(parentName || "").trim();
+  candidate = parentSuffix ? `${name} (${parentSuffix})` : `${name} (${id})`;
+  if (!usedFeatureNames.has(candidate)) {
+    usedFeatureNames.add(candidate);
+    return candidate;
+  }
+
+  candidate = `${name} (${id})`;
+  usedFeatureNames.add(candidate);
+  return candidate;
+}
+
+function copyTableRows(db, table, columns) {
+  const oldTable = `${table}_relay_old`;
+  if (!tableExists(db, oldTable)) return;
+  const columnList = columns.join(", ");
+  const placeholders = columns.map(() => "?").join(", ");
+  const insert = db.prepare(`INSERT INTO ${table} (${columnList}) VALUES (${placeholders})`);
+  for (const row of db.prepare(`SELECT ${columnList} FROM ${oldTable} ORDER BY rowid ASC`).all()) {
+    insert.run(...columns.map((column) => row[column]));
+  }
+}
+
+function copyContextLayers(db) {
+  if (!tableExists(db, "context_layers_relay_old")) return;
+  const oldFeaturesByProject = new Map();
+  if (tableExists(db, "features_relay_old")) {
+    for (const feature of db.prepare("SELECT id, project_id FROM features_relay_old ORDER BY id ASC").all()) {
+      const list = oldFeaturesByProject.get(feature.project_id) || [];
+      list.push(feature.id);
+      oldFeaturesByProject.set(feature.project_id, list);
+    }
+  }
+
+  const insertWithId = db.prepare(`
+    INSERT INTO context_layers (
+      id,
+      project_id,
+      feature_id,
+      card_id,
+      layer_type,
+      title,
+      body_markdown,
+      actor,
+      role,
+      supersedes_id,
+      superseded_by_id,
+      created_at
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+  const insertWithoutId = db.prepare(`
+    INSERT INTO context_layers (
+      project_id,
+      feature_id,
+      card_id,
+      layer_type,
+      title,
+      body_markdown,
+      actor,
+      role,
+      supersedes_id,
+      superseded_by_id,
+      created_at
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  for (const layer of db.prepare("SELECT * FROM context_layers_relay_old ORDER BY id ASC").all()) {
+    if (layer.card_id || layer.feature_id) {
+      insertWithId.run(
+        layer.id,
+        null,
+        layer.feature_id || null,
+        layer.card_id || null,
+        layer.layer_type,
+        layer.title,
+        layer.body_markdown,
+        layer.actor,
+        layer.role,
+        layer.supersedes_id || null,
+        layer.superseded_by_id || null,
+        layer.created_at,
+      );
+      continue;
+    }
+
+    const projectIds = oldFeaturesByProject.get(layer.project_id) || [];
+    projectIds.forEach((projectId, index) => {
+      const values = [
+        projectId,
+        null,
+        null,
+        layer.layer_type,
+        layer.title,
+        layer.body_markdown,
+        layer.actor,
+        layer.role,
+        index === 0 ? layer.supersedes_id || null : null,
+        index === 0 ? layer.superseded_by_id || null : null,
+        layer.created_at,
+      ];
+      if (index === 0) {
+        insertWithId.run(layer.id, ...values);
+      } else {
+        insertWithoutId.run(...values);
+      }
+    });
+  }
+}
+
+function tableExists(db, table) {
+  return Boolean(db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?").get(table));
+}
+
+function columnsFor(db, table) {
+  if (!tableExists(db, table)) return [];
+  return db.prepare(`PRAGMA table_info(${table})`).all().map((row) => row.name);
 }
 
 function ensureColumn(db, table, column, definition) {
-  const columns = db.prepare(`PRAGMA table_info(${table})`).all().map((row) => row.name);
+  const columns = columnsFor(db, table);
   if (!columns.includes(column)) {
     db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
   }
@@ -151,6 +469,8 @@ function mapProject(row) {
   if (!row) return null;
   return {
     id: row.id,
+    featureId: row.feature_id,
+    featureName: row.feature_name,
     name: row.name,
     description: row.description,
     repoPath: row.repo_path,
@@ -163,7 +483,6 @@ function mapFeature(row) {
   if (!row) return null;
   return {
     id: row.id,
-    projectId: row.project_id,
     name: row.name,
     summary: row.summary,
     status: row.status,
@@ -315,10 +634,10 @@ function createStore(dbPath) {
     const createdAt = now();
     const result = db
       .prepare(`
-        INSERT INTO projects (name, description, repo_path, repo_remote, created_at)
-        VALUES (?, ?, ?, ?, ?)
+        INSERT INTO projects (feature_id, name, description, repo_path, repo_remote, created_at)
+        VALUES (?, ?, ?, ?, ?, ?)
       `)
-      .run(input.name, input.description, input.repoPath, input.repoRemote, createdAt);
+      .run(input.featureId, input.name, input.description, input.repoPath, input.repoRemote, createdAt);
 
     return getProjectById(Number(result.lastInsertRowid));
   }
@@ -327,22 +646,30 @@ function createStore(dbPath) {
     return mapProject(db.prepare("SELECT * FROM projects WHERE id = ?").get(id));
   }
 
-  function getProjectByName(name) {
-    return mapProject(db.prepare("SELECT * FROM projects WHERE name = ?").get(name));
+  function getProjectByName(featureId, name) {
+    return mapProject(db.prepare("SELECT * FROM projects WHERE feature_id = ? AND name = ?").get(featureId, name));
   }
 
-  function listProjects() {
+  function listProjects(featureId = null) {
+    if (featureId) {
+      return db.prepare("SELECT * FROM projects WHERE feature_id = ? ORDER BY name ASC").all(featureId).map(mapProject);
+    }
+
     return db.prepare("SELECT * FROM projects ORDER BY name ASC").all().map(mapProject);
+  }
+
+  function listProjectsByName(name) {
+    return db.prepare("SELECT * FROM projects WHERE name = ? ORDER BY id ASC").all(name).map(mapProject);
   }
 
   function createFeature(input) {
     const createdAt = now();
     const result = db
       .prepare(`
-        INSERT INTO features (project_id, name, summary, status, created_at)
-        VALUES (?, ?, ?, ?, ?)
+        INSERT INTO features (name, summary, status, created_at)
+        VALUES (?, ?, ?, ?)
       `)
-      .run(input.projectId, input.name, input.summary, input.status, createdAt);
+      .run(input.name, input.summary, input.status, createdAt);
 
     return getFeatureById(Number(result.lastInsertRowid));
   }
@@ -351,17 +678,12 @@ function createStore(dbPath) {
     return mapFeature(db.prepare("SELECT * FROM features WHERE id = ?").get(id));
   }
 
-  function getFeatureByName(projectId, name) {
-    return mapFeature(
-      db.prepare("SELECT * FROM features WHERE project_id = ? AND name = ?").get(projectId, name),
-    );
+  function getFeatureByName(name) {
+    return mapFeature(db.prepare("SELECT * FROM features WHERE name = ?").get(name));
   }
 
-  function listFeatures(projectId) {
-    return db
-      .prepare("SELECT * FROM features WHERE project_id = ? ORDER BY name ASC")
-      .all(projectId)
-      .map(mapFeature);
+  function listFeatures() {
+    return db.prepare("SELECT * FROM features ORDER BY name ASC").all().map(mapFeature);
   }
 
   function createCard(input) {
@@ -716,28 +1038,44 @@ function createStore(dbPath) {
       .map(mapEvent);
   }
 
-  function listRecentSendBacks(projectId, limit = 3) {
+  function listRecentSendBacks(featureId, limit = 3) {
     return db
       .prepare(`
         SELECT events.message
         FROM events
         JOIN cards ON cards.id = events.card_id
-        WHERE cards.project_id = ?
+        WHERE cards.feature_id = ?
           AND events.action IN ('admin.needs_changes', 'admin.rejected')
           AND events.message != ''
         ORDER BY events.id DESC
         LIMIT ?
       `)
-      .all(projectId, limit)
+      .all(featureId, limit)
       .map((row) => row.message);
   }
 
   function listContextGaps() {
     return {
+      missingFeatureBriefs: db
+        .prepare(`
+          SELECT features.*
+          FROM features
+          WHERE NOT EXISTS (
+            SELECT 1
+            FROM context_layers
+            WHERE context_layers.feature_id = features.id
+              AND context_layers.layer_type = 'feature_brief'
+              AND context_layers.superseded_by_id IS NULL
+          )
+          ORDER BY features.name ASC
+        `)
+        .all()
+        .map(mapFeature),
       missingProjectMaps: db
         .prepare(`
-          SELECT projects.*
+          SELECT projects.*, features.name AS feature_name
           FROM projects
+          JOIN features ON features.id = projects.feature_id
           WHERE NOT EXISTS (
             SELECT 1
             FROM context_layers
@@ -745,7 +1083,7 @@ function createStore(dbPath) {
               AND context_layers.layer_type = 'project_map'
               AND context_layers.superseded_by_id IS NULL
           )
-          ORDER BY projects.name ASC
+          ORDER BY features.name ASC, projects.name ASC
         `)
         .all()
         .map(mapProject),
@@ -875,6 +1213,7 @@ function createStore(dbPath) {
     getFeatureByName,
     getNotificationById,
     getProjectByName,
+    listProjectsByName,
     listCards,
     listContextLayers,
     listContextGaps,

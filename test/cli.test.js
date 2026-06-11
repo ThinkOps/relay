@@ -50,8 +50,8 @@ test("claim prints the brief in human-readable mode", () => {
   const dbPath = path.join(root, ".relay", "relay.db");
 
   const app = createRelay({ dbPath, cwd: process.cwd() });
-  app.createProject({ name: "Mobile App", actor: "admin", role: "admin" });
-  app.createFeature({ project: "Mobile App", name: "Login Revamp", actor: "pm-agent", role: "pm" });
+  app.createFeature({ name: "Login Revamp", actor: "pm-agent", role: "pm" });
+  app.createProject({ feature: "Login Revamp", name: "Mobile App", actor: "admin", role: "admin" });
   const card = app.createCard({
     project: "Mobile App",
     feature: "Login Revamp",
@@ -96,8 +96,8 @@ test("context CLI adds, lists, shows, and supersedes markdown bodies", () => {
   fs.writeFileSync(handoffPath, "Reviewer should start with reset validation.\n");
 
   const app = createRelay({ dbPath, cwd: process.cwd() });
-  app.createProject({ name: "Mobile App", actor: "admin", role: "admin" });
-  app.createFeature({ project: "Mobile App", name: "Login Revamp", actor: "pm-agent", role: "pm" });
+  app.createFeature({ name: "Login Revamp", actor: "pm-agent", role: "pm" });
+  app.createProject({ feature: "Login Revamp", name: "Mobile App", actor: "admin", role: "admin" });
   const card = app.createCard({
     project: "Mobile App",
     feature: "Login Revamp",
