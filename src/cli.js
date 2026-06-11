@@ -357,6 +357,11 @@ function print(value, json) {
     return;
   }
 
+  if (value && value.brief && value.brief.card && value.brief.layers && value.brief.nextAction) {
+    printBrief(value.brief);
+    return;
+  }
+
   if (value && value.events) {
     printCard(value);
     return;

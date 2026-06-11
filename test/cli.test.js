@@ -44,6 +44,48 @@ test("help explains the agent operating loop", async () => {
   assert.match(output, /Prefer --json for machine-readable output/);
 });
 
+test("claim prints the brief in human-readable mode", () => {
+  const root = tempDir();
+  const dbPath = path.join(root, ".relay", "relay.db");
+
+  const app = createRelay({ dbPath, cwd: process.cwd() });
+  app.createProject({ name: "Mobile App", actor: "admin", role: "admin" });
+  app.createFeature({ project: "Mobile App", name: "Login Revamp", actor: "pm-agent", role: "pm" });
+  const card = app.createCard({
+    project: "Mobile App",
+    feature: "Login Revamp",
+    title: "Claim prints context",
+    problemStatement: "Human CLI users need the same bounded context agents get through JSON.",
+    acceptanceCriteria: "Claim output includes the card brief",
+    definitionOfDone: "The terminal output starts from the brief instead of a raw object.",
+    targetRepo: "git@example.com:mobile/app.git",
+    expectedRole: "developer",
+    riskLevel: "low",
+    actor: "pm-agent",
+    role: "pm",
+  });
+  app.submitCard(card.id, { actor: "pm-agent", role: "pm" });
+  app.approveCard(card.id, { actor: "admin", role: "admin" });
+  app.close();
+
+  const output = runRelay([
+    "--db",
+    dbPath,
+    "claim",
+    String(card.id),
+    "--actor",
+    "dev-agent",
+    "--agent",
+    "dev-agent",
+    "--role",
+    "developer",
+  ]);
+
+  assert.match(output, new RegExp(`#${card.id} Claim prints context`));
+  assert.match(output, /Next action:/);
+  assert.doesNotMatch(output, /brief: \[object Object\]/);
+});
+
 test("context CLI adds, lists, shows, and supersedes markdown bodies", () => {
   const root = tempDir();
   const dbPath = path.join(root, ".relay", "relay.db");
