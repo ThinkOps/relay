@@ -550,3 +550,69 @@ test("context layers supersede immutably and list active layers by default", () 
 
   app.close();
 });
+
+test("brief returns bounded card context with latest active layers", () => {
+  const app = seededApp();
+  const card = app.createCard({
+    project: "Mobile App",
+    feature: "Login Revamp",
+    title: "Review reset handoff",
+    problemStatement: "Reviewer needs a bounded work brief.",
+    acceptanceCriteria: "Brief includes active implementation notes",
+    definitionOfDone: "Reviewer can start without reading the full timeline.",
+    targetRepo: "git@example.com:mobile/app.git",
+    expectedRole: "developer",
+    riskLevel: "medium",
+    actor: "pm-agent",
+    role: "pm",
+  });
+  app.addContextLayer({
+    project: "Mobile App",
+    type: "project_map",
+    title: "Mobile app project map",
+    body: "Auth flows live in src/auth. Run npm test for validation.",
+    actor: "mapper-agent",
+    role: "developer",
+  });
+  const originalNotes = app.addContextLayer({
+    card: card.id,
+    type: "implementation_notes",
+    title: "Initial implementation notes",
+    body: "Started token validation.",
+    actor: "dev-agent",
+    role: "developer",
+  });
+  const activeNotes = app.supersedeContextLayer(originalNotes.id, {
+    title: "Final implementation notes",
+    body: "Finished token validation and added invalid-token tests.",
+    actor: "dev-agent",
+    role: "developer",
+  });
+  const evidence = app.addContextLayer({
+    card: card.id,
+    type: "validation_evidence",
+    title: "Validation evidence",
+    body: "npm test passed for reset token paths.",
+    actor: "dev-agent",
+    role: "developer",
+  });
+
+  app.submitCard(card.id, { actor: "pm-agent", role: "pm" });
+  app.approveCard(card.id, { actor: "aditya", role: "admin" });
+  app.claimCard(card.id, { actor: "dev-agent", role: "developer", agent: "dev-agent" });
+  app.addNote(card.id, { actor: "dev-agent", role: "developer", message: "Ready for review." });
+  app.moveCard(card.id, { actor: "dev-agent", role: "developer", status: "review" });
+
+  const brief = app.briefCard(card.id, { role: "reviewer" });
+
+  assert.equal(Object.hasOwn(brief.card, "events"), false);
+  assert.equal(brief.layers.project_map.layerType, "project_map");
+  assert.equal(brief.layers.implementation_notes.id, activeNotes.id);
+  assert.equal(brief.layers.validation_evidence.id, evidence.id);
+  assert.equal(brief.decisions.length, 1);
+  assert.equal(brief.decisions[0].action, "admin.approved");
+  assert.equal(brief.recentEvents.length, 5);
+  assert.match(brief.nextAction, /Check implementation_notes/);
+
+  app.close();
+});

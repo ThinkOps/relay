@@ -1,4 +1,12 @@
-const { APPROVAL_STATUSES, CARD_STATUSES, FEATURE_STATUSES, LAYER_TYPES, RISK_LEVELS, ROLES } = require("./constants");
+const {
+  APPROVAL_STATUSES,
+  BRIEF_LAYERS,
+  CARD_STATUSES,
+  FEATURE_STATUSES,
+  LAYER_TYPES,
+  RISK_LEVELS,
+  ROLES,
+} = require("./constants");
 const { readGitMetadata } = require("./git");
 const { createStore } = require("./storage");
 
@@ -378,6 +386,26 @@ function createRelay({ dbPath, cwd = process.cwd() }) {
     return requireContextLayer(id);
   }
 
+  function briefCard(id, input = {}) {
+    const card = requireCard(id);
+    const actingRole = role(input.role || card.assignedRole || card.expectedRole);
+    const events = store.listEvents(card.id);
+    const layers = {};
+
+    for (const layerType of BRIEF_LAYERS[actingRole]) {
+      const layer = latestBriefLayer(card, layerType);
+      if (layer) layers[layerType] = layer;
+    }
+
+    return {
+      card,
+      layers,
+      decisions: events.filter((item) => item.action.startsWith("admin.")).map(briefEvent),
+      recentEvents: events.slice(-5).map(briefEvent),
+      nextAction: nextBriefAction(card, actingRole),
+    };
+  }
+
   function getCard(id) {
     const card = requireCard(id);
     return {
@@ -517,6 +545,15 @@ function createRelay({ dbPath, cwd = process.cwd() }) {
     return layer;
   }
 
+  function latestBriefLayer(card, layerType) {
+    const scopes = [{ cardId: card.id }, { featureId: card.featureId }, { projectId: card.projectId }];
+    for (const scope of scopes) {
+      const [layer] = store.listContextLayers({ ...scope, layerType });
+      if (layer) return layer;
+    }
+    return null;
+  }
+
   function event(cardId, input, action, message, metadata) {
     const storedEvent = store.addEvent({
       cardId,
@@ -634,6 +671,7 @@ function createRelay({ dbPath, cwd = process.cwd() }) {
     addContextLayer,
     acknowledgeNotification,
     approveCard,
+    briefCard,
     board,
     cancelCard,
     claimCard,
@@ -720,6 +758,42 @@ function contextEventMetadata(layer) {
     cardId: layer.cardId,
     supersedesId: layer.supersedesId,
   };
+}
+
+function briefEvent(event) {
+  return {
+    action: event.action,
+    message: event.message,
+    actor: event.actor,
+    role: event.role,
+    createdAt: event.createdAt,
+  };
+}
+
+function nextBriefAction(card, actingRole) {
+  const actions = {
+    ready: {
+      developer: `Claim this card with relay claim ${card.id} --role developer, then read project_map before exploring the repo.`,
+    },
+    in_progress: {
+      developer: "Work from the acceptance criteria, then write implementation_notes and move the card to review.",
+    },
+    review: {
+      reviewer: "Check implementation_notes against the acceptance criteria, then move to testing or back to in_progress.",
+    },
+    testing: {
+      tester: "Verify validation_evidence claims, then move back to in_progress or wait for admin to mark done.",
+      admin: "Review validation_evidence and tester updates before marking the card done.",
+    },
+    needs_changes: {
+      pm: "Revise the card against admin feedback, then resubmit it for approval.",
+    },
+    pending_approval: {
+      admin: "Approve, request changes, or reject this card from the admin queue.",
+    },
+  };
+
+  return actions[card.status]?.[actingRole] || `Review the card status (${card.status}) and use relay help for allowed next moves.`;
 }
 
 function acceptanceCriteria(value) {

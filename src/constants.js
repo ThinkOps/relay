@@ -21,6 +21,13 @@ const LAYER_TYPES = {
   validation_evidence: { scopes: ["card"], bodyMax: 4000 },
   handoff_intent: { scopes: ["card"], bodyMax: 2000 },
 };
+const BRIEF_LAYERS = {
+  developer: ["project_map", "handoff_intent", "implementation_notes"],
+  reviewer: ["project_map", "implementation_notes", "validation_evidence"],
+  tester: ["validation_evidence", "implementation_notes"],
+  pm: ["project_map", "handoff_intent"],
+  admin: ["project_map", "implementation_notes", "validation_evidence", "handoff_intent"],
+};
 const WIP_LIMITS = {
   ready: 8,
   in_progress: 3,
@@ -30,6 +37,7 @@ const WIP_LIMITS = {
 
 module.exports = {
   APPROVAL_STATUSES,
+  BRIEF_LAYERS,
   CARD_STATUSES,
   FEATURE_STATUSES,
   LAYER_TYPES,

@@ -202,6 +202,12 @@ function dispatch(app, env, parsed, area, action, rest) {
     }
   }
 
+  if (area === "brief") {
+    return app.briefCard(action, {
+      role: requiredFlag(flags, "role"),
+    });
+  }
+
   if (area === "admin") {
     const id = one(rest, "Card id");
     const input = { actor, role: "admin", reason: flags.reason, message: flags.message };
@@ -309,6 +315,11 @@ function print(value, json) {
     return;
   }
 
+  if (value && value.card && value.layers && value.nextAction) {
+    printBrief(value);
+    return;
+  }
+
   if (value && isBoard(value)) {
     printBoard(value);
     return;
@@ -354,6 +365,39 @@ function printBoard(board) {
       const points = card.storyPoints > 0 ? ` ${card.storyPoints}sp` : "";
       const sprint = card.sprint ? ` ${card.sprint}` : "";
       console.log(`  #${card.id} P${card.priority}${points}${sprint} ${card.title} [${card.projectName}/${card.featureName}]`);
+    }
+  }
+}
+
+function printBrief(brief) {
+  const card = brief.card;
+  console.log(`#${card.id} ${card.title}`);
+  console.log(`${card.projectName} / ${card.featureName} / ${card.status}`);
+  console.log("");
+  console.log(`Next action: ${brief.nextAction}`);
+
+  const layers = Object.entries(brief.layers);
+  if (layers.length > 0) {
+    console.log("");
+    console.log("Context layers:");
+    for (const [type, layer] of layers) {
+      console.log(`- ${type} #${layer.id}: ${layer.title} (${layer.scope}, ${layer.actor}/${layer.role})`);
+    }
+  }
+
+  if (brief.decisions.length > 0) {
+    console.log("");
+    console.log("Admin decisions:");
+    for (const decision of brief.decisions) {
+      console.log(`- ${decision.createdAt} ${decision.action}: ${decision.message}`);
+    }
+  }
+
+  if (brief.recentEvents.length > 0) {
+    console.log("");
+    console.log("Recent events:");
+    for (const event of brief.recentEvents) {
+      console.log(`- ${event.createdAt} ${event.role}:${event.actor} ${event.action} ${event.message}`);
     }
   }
 }
@@ -436,7 +480,7 @@ Agent loop:
   relay db --json
   relay agent heartbeat --agent dev-agent --role developer --json
   relay agent inbox --agent dev-agent --role developer --unread --json
-  relay card show 12 --json
+  relay brief 12 --role developer --json
   relay claim 12 --agent dev-agent --role developer --json
   relay note 12 $'## Progress\\n- Implemented core path\\n- Tests pending' --actor dev-agent --role developer
   relay move 12 review --actor dev-agent --role developer --json
@@ -451,6 +495,7 @@ Role handoffs:
 
 Common commands:
   relay board --json
+  relay brief 12 --role developer --json
   relay card list [--status pending_approval] [--json]
   relay card show 12 --json
   relay note 12 "Status update" --actor dev-agent --role developer
