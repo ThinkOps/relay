@@ -17,7 +17,7 @@ async function runCli(argv = process.argv.slice(2), env = process.env, cwd = pro
   const selectedDb = parsed.flags.db || env.RELAY_DB;
 
   if (area === "init") {
-    const workspace = workspaceForInit(cwd, selectedDb);
+    const workspace = workspaceForInit(cwd, selectedDb, env);
     fs.mkdirSync(workspace.relayDir, { recursive: true });
     const app = createRelay({ dbPath: workspace.dbPath, cwd });
     app.close();
@@ -25,7 +25,7 @@ async function runCli(argv = process.argv.slice(2), env = process.env, cwd = pro
     return;
   }
 
-  const workspace = requireWorkspace(cwd, selectedDb);
+  const workspace = requireWorkspace(cwd, selectedDb, env);
 
   if (area === "db") {
     print(workspace, parsed.flags.json);
@@ -568,14 +568,13 @@ function printHelp() {
   console.log(`Relay - admin-first project board for agent work
 
 Agent contract:
-  Use one shared Relay DB. Do not run relay init inside every agent worktree.
+  Use one shared Relay DB. Run relay init once; agents can then use the standard local default.
   Prefer --json for machine-readable output.
   Check your inbox before work, after handoffs, and while waiting for feedback.
   Acknowledge notifications only after you have handled them.
   Post Markdown notes for progress, blockers, review findings, and QA evidence.
 
 Agent loop:
-  export RELAY_DB=/path/to/control/.relay/relay.db
   relay db --json
   relay agent heartbeat --agent dev-agent --role developer --json
   relay agent inbox --agent dev-agent --role developer --unread --json
@@ -650,7 +649,8 @@ Global flags:
   --json           machine-readable output
 
 Environment:
-  RELAY_DB=/path/to/control/.relay/relay.db
+  RELAY_DB=/path/to/control/relay.db        explicit shared DB override
+  RELAY_DATA_HOME=/path/to/local/data/relay advanced default DB directory override
 `);
 }
 

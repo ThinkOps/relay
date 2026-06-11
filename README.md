@@ -6,7 +6,7 @@ The first version is intentionally small:
 
 - CLI-first workflow
 - Local web board UI
-- SQLite database at `.relay/relay.db`, with `RELAY_DB` support for a shared control database
+- SQLite database in the OS-standard local data directory by default, with `.relay/relay.db`, `RELAY_DB`, and `--db` support for explicit control databases
 - Required acceptance criteria before a card can be submitted
 - Agile-inspired card fields: user story, story points, sprint label, acceptance criteria, definition of done
 - WIP limits surfaced on the board for ready, in-progress, review, and QA
@@ -30,36 +30,37 @@ There are no runtime npm dependencies in v0. The API boundary is the seam where 
 
 ```bash
 npm run relay -- init
+npm run relay -- db
 npm run relay -- project create "Relay"
 npm run relay -- feature create "Agent Work Control" --project "Relay"
 ```
 
 ## Shared Agent Setup
 
-Relay should have one control database for the admin board. Do not let each agent initialize its own database inside its own repo unless you are only doing a local experiment.
+Relay should have one control database for the admin board. By default, `relay init` creates it in the local OS data directory so every shell and agent on the machine can discover the same DB.
 
 Create the control database once:
 
 ```bash
-cd /Users/adityachowdhry/work/project-manager
 relay init
 relay db
 ```
 
-Agents working from other repositories should point at that same database:
+Resolution order is:
+
+- `--db /path/to/relay.db`
+- `RELAY_DB=/path/to/relay.db`
+- the standard local data DB, such as `~/Library/Application Support/relay/relay.db` on macOS
+- nearest existing `.relay/relay.db` while walking up from the current directory, used only when the standard local DB has not been initialized
+
+Agents working from other repositories should usually be able to run:
 
 ```bash
-export RELAY_DB=/Users/adityachowdhry/work/project-manager/.relay/relay.db
-relay db
+relay db --json
+relay card show 1 --json
 ```
 
-For one command:
-
-```bash
-relay --db /Users/adityachowdhry/work/project-manager/.relay/relay.db card show 1 --json
-```
-
-When an agent creates a project/card from a target repo, Relay still captures that repo’s git metadata, but stores the work in the shared control database.
+Use `RELAY_DB` or `--db` only when you intentionally want a different control database. When an agent creates a project/card from a target repo, Relay still captures that repo’s git metadata, but stores the work in the shared control database.
 
 Agents should poll their inbox before starting work and whenever they are waiting for feedback:
 
@@ -244,7 +245,7 @@ Add `--json` to most commands for agent-readable output.
 
 Notes support Markdown. Agents can pass real multiline strings, or literal `\n` sequences when that is easier from their shell/runtime.
 
-Use `RELAY_DB` or `--db` whenever a command is run outside the control workspace.
+Use `RELAY_DB` or `--db` only for an explicit non-default control database.
 
 ## Security Notes
 
@@ -254,7 +255,7 @@ Use `RELAY_DB` or `--db` whenever a command is run outside the control workspace
 - Mutating API requests require a per-process request token.
 - The UI uses `textContent` for rendered data.
 - Security headers disable framing, MIME sniffing, broad script sources, and caching.
-- Do not commit `.relay/`; it contains local project state.
+- Do not commit `.relay/` if you choose a repo-local control database; it contains local project state.
 
 Relay is a coordination protocol, not a security boundary. Roles are self-declared by CLI/API callers, and any process with database access can perform any action. The control loop is admin visibility through the inbox, board, event trail, and context gaps.
 

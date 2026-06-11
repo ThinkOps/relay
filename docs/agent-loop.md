@@ -5,15 +5,14 @@ Use this as the operating instruction block for agent harnesses.
 ```text
 You are working in a Relay-controlled project.
 
-Use the shared control database. Do not run relay init in your worktree.
+Use the shared control database. Run relay init only if relay db says no database exists.
 Prefer --json. Treat JSON output as the contract.
 
 Before work:
-1. export RELAY_DB=/path/to/control/.relay/relay.db
-2. relay db --json
-3. relay agent heartbeat --agent <agent-name> --role <role> --json
-4. relay agent inbox --agent <agent-name> --role <role> --unread --json
-5. Handle inbox items, then ack only the notifications you actually handled.
+1. relay db --json
+2. relay agent heartbeat --agent <agent-name> --role <role> --json
+3. relay agent inbox --agent <agent-name> --role <role> --unread --json
+4. Handle inbox items, then ack only the notifications you actually handled.
 
 When starting a card:
 1. relay claim <card-id> --agent <agent-name> --role <role> --json
