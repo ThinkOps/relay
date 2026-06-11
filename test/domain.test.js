@@ -630,6 +630,112 @@ test("brief returns bounded card context with latest active layers", () => {
   app.close();
 });
 
+test("context gaps return projects and cards missing active context", () => {
+  const app = seededApp();
+  app.createProject({ name: "Backend", actor: "admin", role: "admin" });
+  app.createFeature({ project: "Backend", name: "API", actor: "pm-agent", role: "pm" });
+  app.addContextLayer({
+    project: "Mobile App",
+    type: "project_map",
+    title: "Mobile map",
+    body: "Mobile entry points live under app/.",
+    actor: "mapper-agent",
+    role: "developer",
+  });
+
+  const reviewMissing = app.createCard({
+    project: "Mobile App",
+    feature: "Login Revamp",
+    title: "Review missing notes",
+    problemStatement: "Review needs implementation notes.",
+    acceptanceCriteria: "Review card is listed as missing notes",
+    definitionOfDone: "Context gaps include this review card.",
+    targetRepo: "git@example.com:mobile/app.git",
+    expectedRole: "developer",
+    riskLevel: "low",
+    actor: "pm-agent",
+    role: "pm",
+  });
+  const reviewCovered = app.createCard({
+    project: "Mobile App",
+    feature: "Login Revamp",
+    title: "Review covered notes",
+    problemStatement: "Review has implementation notes.",
+    acceptanceCriteria: "Review card is not listed as missing notes",
+    definitionOfDone: "Context gaps exclude this review card.",
+    targetRepo: "git@example.com:mobile/app.git",
+    expectedRole: "developer",
+    riskLevel: "low",
+    actor: "pm-agent",
+    role: "pm",
+  });
+  const testingMissing = app.createCard({
+    project: "Backend",
+    feature: "API",
+    title: "Testing missing evidence",
+    problemStatement: "Testing needs validation evidence.",
+    acceptanceCriteria: "Testing card is listed as missing evidence",
+    definitionOfDone: "Context gaps include this testing card.",
+    targetRepo: "git@example.com:backend/api.git",
+    expectedRole: "developer",
+    riskLevel: "medium",
+    actor: "pm-agent",
+    role: "pm",
+  });
+  const testingCovered = app.createCard({
+    project: "Backend",
+    feature: "API",
+    title: "Testing covered evidence",
+    problemStatement: "Testing has validation evidence.",
+    acceptanceCriteria: "Testing card is not listed as missing evidence",
+    definitionOfDone: "Context gaps exclude this testing card.",
+    targetRepo: "git@example.com:backend/api.git",
+    expectedRole: "developer",
+    riskLevel: "medium",
+    actor: "pm-agent",
+    role: "pm",
+  });
+
+  for (const card of [reviewMissing, reviewCovered, testingMissing, testingCovered]) {
+    app.submitCard(card.id, { actor: "pm-agent", role: "pm" });
+    app.approveCard(card.id, { actor: "admin", role: "admin" });
+    app.claimCard(card.id, { actor: "dev-agent", role: "developer", agent: "dev-agent" });
+  }
+
+  app.addContextLayer({
+    card: reviewCovered.id,
+    type: "implementation_notes",
+    title: "Review notes",
+    body: "Reviewer should inspect the login controller.",
+    actor: "dev-agent",
+    role: "developer",
+  });
+  app.addContextLayer({
+    card: testingCovered.id,
+    type: "validation_evidence",
+    title: "Validation evidence",
+    body: "Smoke tests passed locally.",
+    actor: "dev-agent",
+    role: "developer",
+  });
+
+  app.moveCard(reviewMissing.id, { actor: "dev-agent", role: "developer", status: "review" });
+  app.moveCard(reviewCovered.id, { actor: "dev-agent", role: "developer", status: "review" });
+  app.moveCard(testingMissing.id, { actor: "dev-agent", role: "developer", status: "review" });
+  app.moveCard(testingMissing.id, { actor: "review-agent", role: "reviewer", status: "testing" });
+  app.moveCard(testingCovered.id, { actor: "dev-agent", role: "developer", status: "review" });
+  app.moveCard(testingCovered.id, { actor: "review-agent", role: "reviewer", status: "testing" });
+
+  const gaps = app.contextGaps();
+  assert.deepEqual(gaps.missingProjectMaps.map((project) => project.name), ["Backend"]);
+  assert.deepEqual(gaps.reviewWithoutNotes.map((card) => card.id), [reviewMissing.id]);
+  assert.deepEqual(gaps.testingWithoutEvidence.map((card) => card.id), [testingMissing.id]);
+  assert.equal(gaps.reviewWithoutNotes[0].projectName, "Mobile App");
+  assert.equal(gaps.testingWithoutEvidence[0].featureName, "API");
+
+  app.close();
+});
+
 test("claim returns a brief and move manages handoff context with soft warnings", () => {
   const app = seededApp();
   const card = app.createCard({

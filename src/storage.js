@@ -732,6 +732,58 @@ function createStore(dbPath) {
       .map((row) => row.message);
   }
 
+  function listContextGaps() {
+    return {
+      missingProjectMaps: db
+        .prepare(`
+          SELECT projects.*
+          FROM projects
+          WHERE NOT EXISTS (
+            SELECT 1
+            FROM context_layers
+            WHERE context_layers.project_id = projects.id
+              AND context_layers.layer_type = 'project_map'
+              AND context_layers.superseded_by_id IS NULL
+          )
+          ORDER BY projects.name ASC
+        `)
+        .all()
+        .map(mapProject),
+      reviewWithoutNotes: listCardsMissingContextLayer("review", "implementation_notes"),
+      testingWithoutEvidence: listCardsMissingContextLayer("testing", "validation_evidence"),
+    };
+  }
+
+  function listCardsMissingContextLayer(status, layerType) {
+    return db
+      .prepare(`
+        SELECT
+          cards.*,
+          projects.name AS project_name,
+          features.name AS feature_name
+        FROM cards
+        JOIN projects ON projects.id = cards.project_id
+        JOIN features ON features.id = cards.feature_id
+        WHERE cards.status = ?
+          AND NOT EXISTS (
+            SELECT 1
+            FROM context_layers
+            WHERE context_layers.card_id = cards.id
+              AND context_layers.layer_type = ?
+              AND context_layers.superseded_by_id IS NULL
+          )
+        ORDER BY
+          CASE cards.status
+            ${CARD_STATUS_ORDER_SQL}
+            ELSE ${CARD_STATUSES.length}
+          END,
+          cards.priority ASC,
+          cards.updated_at DESC
+      `)
+      .all(status, layerType)
+      .map(mapCard);
+  }
+
   function addNotification(input) {
     const createdAt = now();
     db.prepare(`
@@ -825,6 +877,7 @@ function createStore(dbPath) {
     getProjectByName,
     listCards,
     listContextLayers,
+    listContextGaps,
     listEvents,
     listFeatures,
     listNotifications,
