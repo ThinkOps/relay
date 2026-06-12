@@ -35,6 +35,31 @@ npm run relay -- feature create "Agent Work Control"
 npm run relay -- project create "Relay" --feature "Agent Work Control"
 ```
 
+## Installation
+
+During early development, install directly from GitHub:
+
+```bash
+npm install -g git+ssh://git@github.com/ThinkOps/relay.git
+relay --help
+```
+
+For a local release candidate, pack and install the tarball:
+
+```bash
+npm pack
+npm install -g ./thinkops-relay-0.1.0.tgz
+relay --help
+```
+
+When published to npm, install with:
+
+```bash
+npm install -g @thinkops/relay
+relay init
+relay ui
+```
+
 ## Shared Agent Setup
 
 Relay should have one control database for the admin board. By default, `relay init` creates it in the local OS data directory so every shell and agent on the machine can discover the same DB.
@@ -265,6 +290,22 @@ Relay is a coordination protocol, not a security boundary. Roles are self-declar
 
 ```bash
 npm test
+npm run coverage
+npm run pack:dry-run
 ```
 
 The tests use real temporary SQLite databases. The server test starts a temporary localhost HTTP server.
+
+## Release Checklist
+
+Relay is package-ready as `@thinkops/relay`, but the current package license is `UNLICENSED`. Choose a final license before a public npm release.
+
+```bash
+npm test
+npm run pack:dry-run
+npm login
+npm publish
+git tag v0.1.0
+git push origin v0.1.0
+gh release create v0.1.0 --title "Relay v0.1.0" --notes "Initial CLI/UI release"
+```

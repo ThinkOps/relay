@@ -1,19 +1,45 @@
 {
-  "name": "relay",
+  "name": "@thinkops/relay",
   "version": "0.1.0",
   "description": "Admin-first project board for managing agent work.",
-  "private": true,
   "type": "commonjs",
   "bin": {
     "relay": "./bin/relay.js"
   },
+  "files": [
+    "bin",
+    "docs",
+    "src",
+    "web",
+    "README.md"
+  ],
   "scripts": {
+    "coverage": "node --no-warnings --experimental-test-coverage --test test/*.test.js",
+    "pack:dry-run": "npm pack --dry-run",
     "relay": "node --no-warnings ./bin/relay.js",
     "ui": "node --no-warnings ./bin/relay.js ui",
     "test": "node --no-warnings --test test/*.test.js"
   },
   "engines": {
     "node": ">=22.5.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/ThinkOps/relay.git"
+  },
+  "bugs": {
+    "url": "https://github.com/ThinkOps/relay/issues"
+  },
+  "homepage": "https://github.com/ThinkOps/relay#readme",
+  "keywords": [
+    "agent",
+    "kanban",
+    "project-management",
+    "cli",
+    "sqlite"
+  ],
+  "publishConfig": {
+    "access": "public"
   },
   "license": "UNLICENSED"
 }
