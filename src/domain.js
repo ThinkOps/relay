@@ -178,7 +178,7 @@ function createRelay({ dbPath, cwd = process.cwd() }) {
   function requestChanges(id, input = {}) {
     const card = requireCard(id);
     assertAdmin(input.role);
-    assertStatus(card.status, ["pending_approval"], "Only pending cards can be sent back for changes.");
+    assertStatus(card.status, ["pending_approval", "ready"], "Only pending or ready cards can be sent back for changes.");
     const reason = requiredText(input.reason, "Reason");
 
     const updated = store.updateCardState(card.id, {
@@ -279,6 +279,27 @@ function createRelay({ dbPath, cwd = process.cwd() }) {
       ...updated,
       warnings,
     };
+  }
+
+  function unclaimCard(id, input = {}) {
+    const card = requireCard(id);
+    assertAdmin(input.role);
+    assertStatus(card.status, ["in_progress", "review", "testing"], "Only active claimed cards can be unclaimed.");
+    if (!card.assignedAgent) throw new Error(`Card #${card.id} is not claimed.`);
+
+    const updated = store.updateCardState(card.id, {
+      status: "ready",
+      approvalStatus: card.approvalStatus,
+      assignedRole: "",
+      assignedAgent: "",
+    });
+
+    event(updated.id, input, "admin.unclaimed", `Unclaimed ${card.assignedAgent}`, {
+      previousStatus: card.status,
+      previousAgent: card.assignedAgent,
+      previousRole: card.assignedRole,
+    });
+    return updated;
   }
 
   function pauseCard(id, input = {}) {
@@ -828,6 +849,7 @@ function createRelay({ dbPath, cwd = process.cwd() }) {
     reviseCard,
     submitCard,
     supersedeContextLayer,
+    unclaimCard,
   };
 }
 

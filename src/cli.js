@@ -273,6 +273,13 @@ function dispatch(app, env, parsed, area, action, rest, cwd) {
     });
   }
 
+  if (area === "unclaim") {
+    return app.unclaimCard(action, {
+      actor,
+      role: flags.role || "admin",
+    });
+  }
+
   if (area === "move") {
     return app.moveCard(action, {
       actor,
@@ -566,6 +573,7 @@ function inferredHeartbeatRole(area, action, flags) {
   if (area === "project") return flags.role || "admin";
   if (area === "feature") return "pm";
   if (area === "card" && ["create", "submit", "revise"].includes(action)) return flags.actorRole || "pm";
+  if (area === "unclaim") return "admin";
   if (["claim", "move", "note", "link"].includes(area)) return flags.role || "developer";
   return flags.actorRole || flags.role || "pm";
 }
@@ -592,8 +600,8 @@ Agent loop:
 
 Role handoffs:
   developer: claim ready cards, post progress, move in_progress -> review with --human-summary-file
-  reviewer: post review findings, move review -> testing with --human-summary-file or back to in_progress
-  tester: post QA evidence, move testing -> in_progress when fixes are needed
+  reviewer: code review only; post findings, move review -> testing with --human-summary-file or back to in_progress
+  tester: QA/UAT only; post evidence, move testing -> in_progress when fixes are needed
   pm: create/revise/submit cards, respond to admin needs-changes
   admin: approve, request changes, reject, pause, cancel, mark done
 
@@ -605,6 +613,7 @@ Common commands:
   relay card lint 12 --json
   relay note 12 "Status update" --actor dev-agent --role developer
   relay link 12 --branch feature/reset --commit abc123 --pr https://...
+  relay unclaim 12 --actor admin
   relay context add --card 12 --type implementation_notes --title "Backend changes" --body-file notes.md
   relay move 12 review --role developer --human-summary-file human-summary.md --handoff-file handoff.md
   relay context list --card 12 --all --json
@@ -647,6 +656,7 @@ PM scope commands:
 Admin commands:
   relay admin approve 12 --actor admin
   relay admin changes 12 --reason "Acceptance criteria too vague" --actor admin
+  relay unclaim 12 --actor admin
   relay admin reject 12 --reason "Not a priority" --actor admin
   relay admin done 12 --actor admin
 

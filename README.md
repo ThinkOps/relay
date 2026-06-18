@@ -122,13 +122,15 @@ Submit and approve it:
 npm run relay -- card submit 1 --actor pm-agent
 npm run relay -- admin approve 1 --actor aditya
 npm run relay -- claim 1 --role developer --agent dev-agent
+npm run relay -- unclaim 1 --actor aditya
 npm run relay -- agent list
 npm run relay -- board
 ```
 
-If admin requests changes, the PM can revise the scoped fields and resubmit:
+If admin requests changes before work starts, including after a card has already reached `ready`, the PM can revise the scoped fields and resubmit:
 
 ```bash
+npm run relay -- admin changes 1 --reason "Acceptance criteria are too vague" --actor aditya
 npm run relay -- card revise 1 \
   --ac "User can request a reset email" \
   --ac "Expired and invalid tokens are rejected" \
@@ -191,6 +193,8 @@ Cards move through this lifecycle:
 ```text
 draft -> pending_approval -> ready -> in_progress -> review -> testing -> done
 ```
+
+`review` means code review: implementation correctness, tests, migrations, regressions, and whether the code satisfies the card. `testing` means QA/UAT: product behavior and user-facing scenarios. A card is not accepted as done until it passes testing and admin marks it done.
 
 The UI labels these in a lighter agile style:
 
@@ -256,6 +260,7 @@ npm run relay -- agent heartbeat --role developer --agent dev-agent
 npm run relay -- agent list
 npm run relay -- admin changes 1 --reason "Acceptance criteria are too vague"
 npm run relay -- admin reject 1 --reason "Not a priority"
+npm run relay -- unclaim 1 --actor admin
 npm run relay -- move 1 review --role developer --handoff-file handoff.md
 npm run relay -- move 1 review --role developer --human-summary-file human-summary.md --handoff-file handoff.md
 npm run relay -- note 1 "Implemented reset token flow" --role developer

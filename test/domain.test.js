@@ -99,6 +99,37 @@ test("admin can request changes with an event trail", () => {
   app.close();
 });
 
+test("admin can send a ready approved card back for changes", () => {
+  const app = seededApp();
+  const card = app.createCard({
+    project: "Mobile App",
+    feature: "Login Revamp",
+    title: "Amend approved copy",
+    problemStatement: "Approved cards can still contain copy or scope mistakes.",
+    acceptanceCriteria: "Admin can send ready work back before it is claimed",
+    definitionOfDone: "PM can revise and resubmit.",
+    targetRepo: "git@example.com:mobile/app.git",
+    expectedRole: "developer",
+    riskLevel: "low",
+    actor: "pm-agent",
+    role: "pm",
+  });
+
+  app.submitCard(card.id, { actor: "pm-agent", role: "pm" });
+  app.approveCard(card.id, { actor: "aditya", role: "admin" });
+  const changed = app.requestChanges(card.id, {
+    actor: "aditya",
+    role: "admin",
+    reason: "Fix the acceptance criteria before developers claim this.",
+  });
+
+  assert.equal(changed.status, "needs_changes");
+  assert.equal(changed.approvalStatus, "needs_changes");
+  assert.equal(app.getCard(card.id).events.at(-1).action, "admin.needs_changes");
+
+  app.close();
+});
+
 test("agent notes normalize escaped markdown line breaks", () => {
   const app = seededApp();
   const card = app.createCard({
@@ -268,6 +299,52 @@ test("agent heartbeat marks agents online", () => {
   assert.equal(heartbeat.role, "developer");
   assert.equal(online.length, 1);
   assert.equal(online[0].agent, "dev-agent");
+
+  app.close();
+});
+
+test("admin can unclaim active work for dead-agent recovery", () => {
+  const app = seededApp();
+  const card = app.createCard({
+    project: "Mobile App",
+    feature: "Login Revamp",
+    title: "Recover abandoned work",
+    problemStatement: "Agents can die after claiming work.",
+    acceptanceCriteria: "Admin can release the claim and a replacement can claim",
+    definitionOfDone: "Replacement agent receives the card brief.",
+    targetRepo: "git@example.com:mobile/app.git",
+    expectedRole: "developer",
+    riskLevel: "medium",
+    actor: "pm-agent",
+    role: "pm",
+  });
+
+  app.submitCard(card.id, { actor: "pm-agent", role: "pm" });
+  app.approveCard(card.id, { actor: "aditya", role: "admin" });
+  app.claimCard(card.id, {
+    actor: "dead-agent",
+    role: "developer",
+    agent: "dead-agent",
+  });
+
+  assert.throws(
+    () => app.claimCard(card.id, { actor: "replacement", role: "developer", agent: "replacement" }),
+    /Only ready cards can be claimed/,
+  );
+
+  const unclaimed = app.unclaimCard(card.id, { actor: "aditya", role: "admin" });
+  const replacement = app.claimCard(card.id, {
+    actor: "replacement",
+    role: "developer",
+    agent: "replacement",
+  });
+  const unclaimEvent = app.getCard(card.id).events.find((event) => event.action === "admin.unclaimed");
+
+  assert.equal(unclaimed.status, "ready");
+  assert.equal(unclaimed.assignedAgent, "");
+  assert.equal(replacement.assignedAgent, "replacement");
+  assert.equal(replacement.status, "in_progress");
+  assert.equal(unclaimEvent.metadata.previousAgent, "dead-agent");
 
   app.close();
 });

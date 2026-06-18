@@ -39,6 +39,7 @@ test("help explains the agent operating loop", async () => {
   assert.match(output, /relay agent inbox --agent dev-agent --role developer --unread --json/);
   assert.match(output, /relay brief 12 --role developer --json/);
   assert.match(output, /relay card lint 12 --json/);
+  assert.match(output, /relay unclaim 12 --actor admin/);
   assert.match(output, /relay agent ack 34 --agent dev-agent --role developer --json/);
   assert.match(output, /Prefer --json for machine-readable output/);
   assert.match(output, /RELAY_DB=\/path\/to\/control\/relay\.db/);

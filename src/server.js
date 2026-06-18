@@ -169,6 +169,12 @@ async function handleApi({ request, response, url, dbPath, cwd, token }) {
       return;
     }
 
+    if (request.method === "POST" && parts[1] === "unclaim" && parts[2]) {
+      const body = await readBody(request);
+      sendJson(response, 200, app.unclaimCard(parts[2], { ...body, role: "admin" }));
+      return;
+    }
+
     if (request.method === "POST" && parts[1] === "move" && parts[2]) {
       const body = await readBody(request);
       sendJson(response, 200, app.moveCard(parts[2], body));
