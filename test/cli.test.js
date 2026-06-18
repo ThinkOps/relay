@@ -38,8 +38,11 @@ test("help explains the agent operating loop", async () => {
   assert.match(output, /Agent loop:/);
   assert.match(output, /relay agent inbox --agent dev-agent --role developer --unread --json/);
   assert.match(output, /relay brief 12 --role developer --json/);
+  assert.match(output, /relay card transitions 12 --role developer --json/);
+  assert.match(output, /relay card dependencies 12 --json/);
   assert.match(output, /relay card lint 12 --json/);
   assert.match(output, /relay unclaim 12 --actor admin/);
+  assert.match(output, /--blocked-by 12/);
   assert.match(output, /relay agent ack 34 --agent dev-agent --role developer --json/);
   assert.match(output, /Prefer --json for machine-readable output/);
   assert.match(output, /RELAY_DB=\/path\/to\/control\/relay\.db/);
@@ -126,6 +129,70 @@ test("card revise preserves acceptance criteria when --ac is omitted", () => {
   );
 
   assert.deepEqual(revised.acceptanceCriteria, ["Existing criterion stays intact"]);
+});
+
+test("card CLI records dependencies and prints transitions", () => {
+  const root = tempDir();
+  const dbPath = path.join(root, ".relay", "relay.db");
+
+  const app = createRelay({ dbPath, cwd: process.cwd() });
+  app.createFeature({ name: "Login Revamp", actor: "pm-agent", role: "pm" });
+  app.createProject({ feature: "Login Revamp", name: "Mobile App", actor: "admin", role: "admin" });
+  const blocker = app.createCard({
+    project: "Mobile App",
+    feature: "Login Revamp",
+    title: "Build reset service",
+    problemStatement: "UI work depends on a service.",
+    acceptanceCriteria: "Service exists",
+    definitionOfDone: "Service tests pass.",
+    targetRepo: "git@example.com:mobile/app.git",
+    expectedRole: "developer",
+    riskLevel: "low",
+    actor: "pm-agent",
+    role: "pm",
+  });
+  app.close();
+
+  const dependent = JSON.parse(
+    runRelay([
+      "--db",
+      dbPath,
+      "card",
+      "create",
+      "--feature",
+      "Login Revamp",
+      "--project",
+      "Mobile App",
+      "--title",
+      "Build reset UI",
+      "--problem",
+      "UI work should wait for the service contract.",
+      "--ac",
+      "UI calls the reset service",
+      "--done",
+      "UI tests pass.",
+      "--blocked-by",
+      String(blocker.id),
+      "--role",
+      "developer",
+      "--json",
+    ]),
+  );
+
+  assert.deepEqual(dependent.blockedBy.map((card) => card.id), [blocker.id]);
+
+  const dependencies = JSON.parse(
+    runRelay(["--db", dbPath, "card", "dependencies", String(dependent.id), "--json"]),
+  );
+  assert.equal(dependencies.isBlocked, true);
+  assert.equal(dependencies.blockedBy[0].title, "Build reset service");
+
+  runRelay(["--db", dbPath, "card", "submit", String(dependent.id), "--actor", "pm-agent"]);
+  runRelay(["--db", dbPath, "admin", "approve", String(dependent.id), "--actor", "admin"]);
+  const transitions = JSON.parse(
+    runRelay(["--db", dbPath, "card", "transitions", String(dependent.id), "--role", "developer", "--json"]),
+  );
+  assert.equal(transitions.transitions.find((item) => item.action === "claim").allowed, false);
 });
 
 test("context CLI adds, lists, shows, and supersedes markdown bodies", () => {

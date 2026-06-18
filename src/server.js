@@ -106,6 +106,18 @@ async function handleApi({ request, response, url, dbPath, cwd, token }) {
       return;
     }
 
+    if (request.method === "GET" && parts[1] === "cards" && parts[2] && parts[3] === "dependencies") {
+      sendJson(response, 200, app.getCardDependencies(parts[2]));
+      return;
+    }
+
+    if (request.method === "GET" && parts[1] === "cards" && parts[2] && parts[3] === "transitions") {
+      sendJson(response, 200, app.listCardTransitions(parts[2], {
+        role: url.searchParams.get("role") || undefined,
+      }));
+      return;
+    }
+
     if (request.method === "GET" && url.pathname === "/api/context/gaps") {
       sendJson(response, 200, app.contextGaps());
       return;

@@ -89,6 +89,19 @@ function createSchema(db) {
       FOREIGN KEY (card_id) REFERENCES cards(id) ON DELETE CASCADE
     );
 
+    CREATE TABLE IF NOT EXISTS card_dependencies (
+      card_id INTEGER NOT NULL,
+      blocked_by_card_id INTEGER NOT NULL,
+      created_at TEXT NOT NULL,
+      PRIMARY KEY (card_id, blocked_by_card_id),
+      CHECK (card_id != blocked_by_card_id),
+      FOREIGN KEY (card_id) REFERENCES cards(id) ON DELETE CASCADE,
+      FOREIGN KEY (blocked_by_card_id) REFERENCES cards(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS card_dependencies_blocked_by
+      ON card_dependencies(blocked_by_card_id);
+
     CREATE TABLE IF NOT EXISTS agent_heartbeats (
       agent TEXT PRIMARY KEY,
       role TEXT NOT NULL,
@@ -863,6 +876,61 @@ function createStore(dbPath) {
     return getCardById(id);
   }
 
+  function replaceCardDependencies(cardId, blockedByIds) {
+    const createdAt = now();
+    db.exec("BEGIN IMMEDIATE");
+    try {
+      db.prepare("DELETE FROM card_dependencies WHERE card_id = ?").run(cardId);
+      const insert = db.prepare(`
+        INSERT INTO card_dependencies (card_id, blocked_by_card_id, created_at)
+        VALUES (?, ?, ?)
+      `);
+      for (const blockedById of blockedByIds) insert.run(cardId, blockedById, createdAt);
+      db.exec("COMMIT");
+    } catch (error) {
+      db.exec("ROLLBACK");
+      throw error;
+    }
+
+    return listCardDependencies(cardId);
+  }
+
+  function listCardDependencies(cardId) {
+    return db
+      .prepare(`
+        SELECT
+          cards.*,
+          projects.name AS project_name,
+          features.name AS feature_name
+        FROM card_dependencies
+        JOIN cards ON cards.id = card_dependencies.blocked_by_card_id
+        JOIN projects ON projects.id = cards.project_id
+        JOIN features ON features.id = cards.feature_id
+        WHERE card_dependencies.card_id = ?
+        ORDER BY card_dependencies.blocked_by_card_id ASC
+      `)
+      .all(cardId)
+      .map(mapCard);
+  }
+
+  function listCardDependents(cardId) {
+    return db
+      .prepare(`
+        SELECT
+          cards.*,
+          projects.name AS project_name,
+          features.name AS feature_name
+        FROM card_dependencies
+        JOIN cards ON cards.id = card_dependencies.card_id
+        JOIN projects ON projects.id = cards.project_id
+        JOIN features ON features.id = cards.feature_id
+        WHERE card_dependencies.blocked_by_card_id = ?
+        ORDER BY card_dependencies.card_id ASC
+      `)
+      .all(cardId)
+      .map(mapCard);
+  }
+
   function upsertAgentHeartbeat(input) {
     const lastSeen = now();
     db.prepare(`
@@ -1216,6 +1284,8 @@ function createStore(dbPath) {
     getNotificationById,
     getProjectByName,
     listProjectsByName,
+    listCardDependencies,
+    listCardDependents,
     listCards,
     listContextLayers,
     listContextGaps,
@@ -1225,6 +1295,7 @@ function createStore(dbPath) {
     listOnlineAgents,
     listProjects,
     listRecentSendBacks,
+    replaceCardDependencies,
     updateCardLinks,
     updateCardScope,
     updateCardState,

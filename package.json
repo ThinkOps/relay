@@ -1,6 +1,6 @@
 {
   "name": "@thinkops/relay",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Admin-first project board for managing agent work.",
   "type": "commonjs",
   "bin": {
@@ -41,5 +41,5 @@
   "publishConfig": {
     "access": "public"
   },
-  "license": "UNLICENSED"
+  "license": "MIT"
 }

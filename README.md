@@ -116,11 +116,29 @@ npm run relay -- card create \
   --role developer
 ```
 
+Cards can declare native dependencies when work must happen in order:
+
+```bash
+npm run relay -- card create \
+  --feature "Agent Work Control" \
+  --project "Relay" \
+  --title "Build UI on dependency data" \
+  --problem "The UI needs backend dependency fields before it can show blocked work" \
+  --ac "Blocked cards expose blocker ids and statuses" \
+  --done "Board JSON includes dependency state" \
+  --blocked-by 1 \
+  --role developer
+```
+
+A blocked card can still be approved into `ready`, but it cannot be claimed until every blocker is `done`.
+
 Submit and approve it:
 
 ```bash
 npm run relay -- card submit 1 --actor pm-agent
 npm run relay -- admin approve 1 --actor aditya
+npm run relay -- card dependencies 1 --json
+npm run relay -- card transitions 1 --role developer --json
 npm run relay -- claim 1 --role developer --agent dev-agent
 npm run relay -- unclaim 1 --actor aditya
 npm run relay -- agent list
@@ -214,6 +232,8 @@ testing -> done
 
 Only admin can approve, reject, request changes, pause, cancel, or mark a card done.
 
+Dependencies add one more execution gate: `ready` cards with unresolved blockers remain visible on the board, but `relay claim` rejects them until every `--blocked-by` card is `done`. Use `relay card dependencies <id>` to inspect blockers and dependents, and `relay card transitions <id> --role <role>` to see valid next commands for the current status.
+
 The board shows WIP limits for flow control:
 
 - ready: 8
@@ -253,6 +273,8 @@ npm run relay -- feature list
 npm run relay -- project list --feature "Agent Work Control"
 npm run relay -- card list
 npm run relay -- card show 1
+npm run relay -- card dependencies 1 --json
+npm run relay -- card transitions 1 --role developer --json
 npm run relay -- brief 1 --role developer --json
 npm run relay -- db
 npm run relay -- card revise 1 --ac "Updated criterion" --note "Addressed admin feedback" --submit
@@ -317,9 +339,13 @@ npm run pack:dry-run
 
 The tests use real temporary SQLite databases. The server test starts a temporary localhost HTTP server.
 
+## License
+
+Relay is released under the MIT License. See [LICENSE](LICENSE).
+
 ## Release Checklist
 
-Relay is package-ready as `@thinkops/relay`, but the current package license is `UNLICENSED`. Choose a final license before a public npm release.
+Relay is package-ready as `@thinkops/relay`.
 
 ```bash
 npm test

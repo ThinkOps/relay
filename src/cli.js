@@ -159,6 +159,7 @@ function dispatch(app, env, parsed, area, action, rest, cwd) {
         storyPoints: flags.points,
         sprint: flags.sprint,
         priority: flags.priority,
+        blockedByIds: cardIdListFlag(flags["blocked-by"], "--blocked-by"),
         actor,
         role: flags.createdByRole || "pm",
       });
@@ -169,6 +170,7 @@ function dispatch(app, env, parsed, area, action, rest, cwd) {
     }
 
     if (action === "revise") {
+      const blockedByIds = cardIdListFlag(flags["blocked-by"], "--blocked-by");
       const input = {
         title: flags.title,
         userStory: flags.story,
@@ -189,6 +191,7 @@ function dispatch(app, env, parsed, area, action, rest, cwd) {
       if (flags.ac !== undefined || flags.acceptance !== undefined) {
         input.acceptanceCriteria = flags.ac !== undefined ? flags.ac : flags.acceptance;
       }
+      if (blockedByIds !== undefined) input.blockedByIds = blockedByIds;
 
       return app.reviseCard(one(rest, "Card id"), input);
     }
@@ -199,6 +202,16 @@ function dispatch(app, env, parsed, area, action, rest, cwd) {
 
     if (action === "lint") {
       return app.lintCard(one(rest, "Card id"));
+    }
+
+    if (action === "dependencies") {
+      return app.getCardDependencies(one(rest, "Card id"));
+    }
+
+    if (action === "transitions") {
+      return app.listCardTransitions(one(rest, "Card id"), {
+        role: flags.role,
+      });
     }
 
     if (action === "list") {
@@ -385,6 +398,16 @@ function print(value, json) {
     return;
   }
 
+  if (value && value.card && Array.isArray(value.transitions)) {
+    printTransitions(value);
+    return;
+  }
+
+  if (value && value.card && Array.isArray(value.blockedBy) && Array.isArray(value.blocks)) {
+    printDependencies(value);
+    return;
+  }
+
   if (value && isBoard(value)) {
     printBoard(value);
     return;
@@ -429,7 +452,8 @@ function printBoard(board) {
     for (const card of cards) {
       const points = card.storyPoints > 0 ? ` ${card.storyPoints}sp` : "";
       const sprint = card.sprint ? ` ${card.sprint}` : "";
-      console.log(`  #${card.id} P${card.priority}${points}${sprint} ${card.title} [${card.featureName}/${card.projectName}]`);
+      const blocked = card.isBlocked ? ` blocked by ${card.blockingDependencies.map((dependency) => `#${dependency.id}`).join(",")}` : "";
+      console.log(`  #${card.id} P${card.priority}${points}${sprint} ${card.title} [${card.featureName}/${card.projectName}]${blocked}`);
     }
   }
 }
@@ -440,6 +464,14 @@ function printBrief(brief) {
   console.log(`${card.featureName} / ${card.projectName} / ${card.status}`);
   console.log("");
   console.log(`Next action: ${brief.nextAction}`);
+
+  if (card.isBlocked) {
+    console.log("");
+    console.log("Blocked by:");
+    for (const dependency of card.blockingDependencies) {
+      console.log(`- #${dependency.id} ${dependency.title} (${dependency.status})`);
+    }
+  }
 
   const layers = Object.entries(brief.layers);
   if (layers.length > 0) {
@@ -493,14 +525,75 @@ function printNotification(item) {
   console.log(`${item.event.role}:${item.event.actor} ${item.event.message}`);
 }
 
+function printDependencies(value) {
+  console.log(`#${value.card.id} ${value.card.title}`);
+  console.log(`Blocked: ${value.isBlocked ? "yes" : "no"}`);
+
+  console.log("");
+  console.log("Blocked by:");
+  if (value.blockedBy.length === 0) {
+    console.log("- none");
+  } else {
+    for (const dependency of value.blockedBy) {
+      console.log(`- #${dependency.id} ${dependency.title} (${dependency.status})`);
+    }
+  }
+
+  console.log("");
+  console.log("Blocks:");
+  if (value.blocks.length === 0) {
+    console.log("- none");
+  } else {
+    for (const dependent of value.blocks) {
+      console.log(`- #${dependent.id} ${dependent.title} (${dependent.status})`);
+    }
+  }
+}
+
+function printTransitions(value) {
+  console.log(`#${value.card.id} ${value.card.title}`);
+  console.log(`Role: ${value.role}`);
+  if (value.isBlocked) console.log(`Blocked by: ${value.blockingDependencies.map((dependency) => `#${dependency.id}`).join(", ")}`);
+
+  if (value.transitions.length === 0) {
+    console.log("No command transitions available for this role/status.");
+    return;
+  }
+
+  console.log("");
+  console.log("Transitions:");
+  for (const transition of value.transitions) {
+    const mark = transition.allowed ? "allowed" : "blocked";
+    const reason = transition.reason ? ` - ${transition.reason}` : "";
+    console.log(`- ${mark}: ${transition.command}${reason}`);
+  }
+}
+
 function formatObject(value) {
   if (!value || typeof value !== "object") return String(value);
 
   const pairs = Object.entries(value)
     .filter(([, entry]) => entry !== undefined && entry !== "")
-    .map(([key, entry]) => `${key}: ${Array.isArray(entry) ? entry.join("; ") : entry}`);
+    .map(([key, entry]) => `${key}: ${formatValue(entry)}`);
 
   return pairs.join("\n");
+}
+
+function formatValue(entry) {
+  if (Array.isArray(entry)) {
+    if (entry.every(isCardReference)) return entry.map(formatCardReference).join("; ");
+    return entry.join("; ");
+  }
+  if (entry && typeof entry === "object") return JSON.stringify(entry);
+  return entry;
+}
+
+function isCardReference(entry) {
+  return Boolean(entry && typeof entry === "object" && entry.id && entry.title && entry.status);
+}
+
+function formatCardReference(card) {
+  return `#${card.id} ${card.title} (${card.status})`;
 }
 
 function stripEvents(card) {
@@ -527,6 +620,32 @@ function requiredFlag(flags, key) {
     throw new Error(`--${key} is required.`);
   }
   return flags[key];
+}
+
+function cardIdListFlag(value, label) {
+  if (value === undefined) return undefined;
+  if (value === true) throw new Error(`${label} requires a card id or comma-separated ids.`);
+  const values = Array.isArray(value) ? value : [value];
+  const ids = [];
+  const seen = new Set();
+
+  for (const rawValue of values) {
+    for (const token of String(rawValue)
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean)) {
+      const id = Number.parseInt(token, 10);
+      if (!Number.isInteger(id) || id < 1 || String(id) !== token) {
+        throw new Error(`${label} must contain positive integer card ids.`);
+      }
+      if (!seen.has(id)) {
+        seen.add(id);
+        ids.push(id);
+      }
+    }
+  }
+
+  return ids;
 }
 
 function readBody(flags, cwd) {
@@ -593,6 +712,7 @@ Agent loop:
   relay agent heartbeat --agent dev-agent --role developer --json
   relay agent inbox --agent dev-agent --role developer --unread --json
   relay brief 12 --role developer --json
+  relay card transitions 12 --role developer --json
   relay claim 12 --agent dev-agent --role developer --json
   relay note 12 $'## Progress\\n- Implemented core path\\n- Tests pending' --actor dev-agent --role developer
   relay move 12 review --actor dev-agent --role developer --handoff-file handoff.md --json
@@ -610,6 +730,8 @@ Common commands:
   relay brief 12 --role developer --json
   relay card list [--status pending_approval] [--json]
   relay card show 12 --json
+  relay card dependencies 12 --json
+  relay card transitions 12 --role developer --json
   relay card lint 12 --json
   relay note 12 "Status update" --actor dev-agent --role developer
   relay link 12 --branch feature/reset --commit abc123 --pr https://...
@@ -630,6 +752,7 @@ PM card writing:
   User story: use only when there is a real user and outcome. Empty is better than boilerplate.
   Definition of done: mechanical checklist only: tests pass, PR linked, validation_evidence written.
   Size: one card = one agent session = one PR. Run relay card lint before submit.
+  Dependencies: use --blocked-by 12 or --blocked-by 12,13 when work cannot start until other cards are done.
 
 Human review summary:
   Required when moving in_progress -> review or review -> testing.
@@ -649,7 +772,10 @@ PM scope commands:
   relay context add --feature "Login Revamp" --type feature_brief --title "Feature context" --body-file feature.md
   relay context add --project "Login Revamp:Mobile App" --type project_map --title "Repo map" --body-file map.md
   relay card create --feature "Login Revamp" --project "Mobile App" --title "Add reset" --story "As a user..." --problem "..." --ac "..." --done "..." --points 3 --sprint "Sprint 1" --role developer
+  relay card create --feature "Login Revamp" --project "Mobile App" --title "Build reset UI" --problem "..." --ac "..." --done "..." --blocked-by 12 --role developer
   relay card lint 12 --json
+  relay card dependencies 12 --json
+  relay card transitions 12 --role developer --json
   relay card submit 12 --actor pm-agent
   relay card revise 12 --ac "Updated criterion" --note "Addressed admin feedback" --submit
 

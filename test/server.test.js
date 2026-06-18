@@ -165,6 +165,16 @@ test("server exposes board data and protects mutations with token", async () => 
     assert.equal(brief.layers.implementation_notes.title, "Presence implementation");
     assert.equal(Object.hasOwn(brief.card, "events"), false);
 
+    const transitionsResponse = await fetch(`${server.url}/api/cards/${claimedCard.id}/transitions?role=developer`);
+    const transitions = await transitionsResponse.json();
+    assert.equal(transitionsResponse.status, 200);
+    assert.equal(transitions.transitions.find((item) => item.action === "move" && item.toStatus === "review").allowed, true);
+
+    const dependenciesResponse = await fetch(`${server.url}/api/cards/${claimedCard.id}/dependencies`);
+    const dependencies = await dependenciesResponse.json();
+    assert.equal(dependenciesResponse.status, 200);
+    assert.deepEqual(dependencies.blockedBy, []);
+
     const contextResponse = await fetch(`${server.url}/api/cards/${claimedCard.id}/context`);
     const context = await contextResponse.json();
     assert.equal(context.length, 1);

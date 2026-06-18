@@ -638,6 +638,10 @@ main {
   border-top-color: #22c55e;
 }
 
+.card[data-blocked="true"] {
+  border-top-color: var(--warn);
+}
+
 .card[data-status="paused"] {
   border-top-color: #64748b;
 }
@@ -1226,6 +1230,12 @@ main {
   background: #fee2e2;
   border-color: #fecaca;
   color: #b91c1c;
+}
+
+.status-chip.blocked {
+  background: #fff7ed;
+  border-color: #fed7aa;
+  color: #c2410c;
 }
 
 .priority-chip {

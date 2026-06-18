@@ -251,6 +251,7 @@ function renderBoard(board) {
 function cardNode(card) {
   const node = el("article", "card");
   node.dataset.status = card.status;
+  node.dataset.blocked = String(Boolean(card.isBlocked));
   node.tabIndex = 0;
   node.setAttribute("role", "button");
   node.setAttribute("aria-label", `Open ${card.title}`);
@@ -627,6 +628,7 @@ async function openCard(id, options = {}) {
     detailHeader(card),
     handoffPanel(card),
     detailAdminActions(card),
+    dependenciesBlock(card),
     contextBlock(contextLayers),
     noteForm(card),
     timelineBlock(card.events),
@@ -689,12 +691,32 @@ function detailHeader(card) {
   const status = el("div", "detail-status-row");
   status.append(
     el("span", `status-chip ${card.status}`.trim(), label(card.status)),
+    card.isBlocked ? el("span", "status-chip blocked", "Blocked") : document.createDocumentFragment(),
     el("span", "priority-chip", `${card.riskLevel || "medium"} risk`),
     card.storyPoints > 0 ? el("span", "points-chip", `${card.storyPoints} pts`) : document.createDocumentFragment(),
     card.sprint ? el("span", "points-chip", card.sprint) : document.createDocumentFragment(),
   );
   header.append(kicker, el("h2", "", card.title), status);
   return header;
+}
+
+function dependenciesBlock(card) {
+  const blockedBy = card.blockedBy || [];
+  const blocks = card.blocks || [];
+  if (blockedBy.length === 0 && blocks.length === 0) return document.createDocumentFragment();
+
+  const lines = [];
+  if (blockedBy.length > 0) {
+    lines.push("Blocked by:");
+    for (const dependency of blockedBy) lines.push(`- #${dependency.id} ${dependency.title} (${label(dependency.status)})`);
+  }
+  if (blocks.length > 0) {
+    if (lines.length > 0) lines.push("");
+    lines.push("Blocks:");
+    for (const dependent of blocks) lines.push(`- #${dependent.id} ${dependent.title} (${label(dependent.status)})`);
+  }
+
+  return block("Dependencies", lines.join("\n"));
 }
 
 async function addCardNote(id, form) {
@@ -985,6 +1007,10 @@ function handoffSignal(card) {
     return signal("Admin decision", firstText(card.acceptanceCriteria) || card.problemStatement, "pending");
   }
 
+  if (card.status === "ready" && card.isBlocked) {
+    return signal("Blocked", dependencySignalText(card.blockingDependencies || []), "warning");
+  }
+
   if (card.status === "ready") {
     return signal("Ready for claim", `${roleLabel(card.expectedRole)} should claim this and post an execution plan.`, "ready");
   }
@@ -1018,6 +1044,11 @@ function handoffSignal(card) {
 
 function signal(labelText, text, tone) {
   return { label: labelText, text, tone };
+}
+
+function dependencySignalText(dependencies) {
+  if (dependencies.length === 0) return "Waiting for dependencies to finish.";
+  return `Waiting on ${dependencies.map((dependency) => `#${dependency.id} ${dependency.title} (${label(dependency.status)})`).join(", ")}.`;
 }
 
 function latestNote(card, roles) {

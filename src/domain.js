@@ -13,6 +13,7 @@ const { createStore } = require("./storage");
 function createRelay({ dbPath, cwd = process.cwd() }) {
   const store = createStore(dbPath);
   const ONLINE_WINDOW_MS = 5 * 60 * 1000;
+  const SATISFIED_DEPENDENCY_STATUSES = new Set(["done"]);
 
   function createProject(input) {
     const feature = resolveFeature(input.feature);
@@ -60,6 +61,7 @@ function createRelay({ dbPath, cwd = process.cwd() }) {
     const feature = resolveFeature(input.feature);
     const project = resolveProject(feature.id, input.project);
     const git = readGitMetadata(cwd);
+    const blockedByIds = resolveBlockedByIds(dependencyInput(input));
     const card = store.createCard({
       projectId: project.id,
       featureId: feature.id,
@@ -80,6 +82,8 @@ function createRelay({ dbPath, cwd = process.cwd() }) {
       commitSha: git.commitSha,
       createdByRole: role(input.createdByRole || input.role || "pm"),
     });
+    store.replaceCardDependencies(card.id, blockedByIds);
+    const cardWithDependencies = withDependencySummary(store.getCardById(card.id));
 
     store.addEvent({
       cardId: card.id,
@@ -87,11 +91,11 @@ function createRelay({ dbPath, cwd = process.cwd() }) {
       role: role(input.role || "pm"),
       action: "card.created",
       message: card.title,
-      metadata: { dirty: git.dirty },
+      metadata: { dirty: git.dirty, blockedByIds },
     });
 
     return {
-      ...card,
+      ...cardWithDependencies,
       recentSendBacks: store.listRecentSendBacks(feature.id),
     };
   }
@@ -107,11 +111,12 @@ function createRelay({ dbPath, cwd = process.cwd() }) {
       assignedRole: card.assignedRole,
       assignedAgent: card.assignedAgent,
     });
+    const cardWithDependencies = withDependencySummary(updated);
 
     event(updated.id, input, "card.submitted", "Submitted for admin approval");
     return {
-      ...updated,
-      warnings: cardLintWarnings(updated),
+      ...cardWithDependencies,
+      warnings: cardLintWarnings(cardWithDependencies),
     };
   }
 
@@ -125,6 +130,10 @@ function createRelay({ dbPath, cwd = process.cwd() }) {
     if (revisedFields.length === 0 && !message) {
       throw new Error("At least one revised field or note is required.");
     }
+    const hasDependencyUpdate = Object.hasOwn(input, "blockedByIds") || Object.hasOwn(input, "blockedBy");
+    const nextBlockedByIds = hasDependencyUpdate
+      ? resolveBlockedByIds(dependencyInput(input), card.id)
+      : undefined;
 
     const updated = store.updateCardScope(card.id, {
       title: valueOrCurrent(input.title, card.title, (value) => requiredText(value, "Card title")),
@@ -147,16 +156,18 @@ function createRelay({ dbPath, cwd = process.cwd() }) {
       sprint: valueOrCurrent(input.sprint, card.sprint, optionalText),
       priority: valueOrCurrent(input.priority, card.priority, priority),
     });
+    if (nextBlockedByIds !== undefined) store.replaceCardDependencies(card.id, nextBlockedByIds);
 
     event(updated.id, input, "card.revised", message || `Revised ${revisedFields.join(", ")}`, {
       revisedFields,
+      blockedByIds: nextBlockedByIds,
     });
 
     if (input.submit) {
       return submitCard(updated.id, { actor: input.actor, role: input.role || "pm" });
     }
 
-    return updated;
+    return withDependencySummary(store.getCardById(updated.id));
   }
 
   function approveCard(id, input = {}) {
@@ -172,7 +183,7 @@ function createRelay({ dbPath, cwd = process.cwd() }) {
     });
 
     event(updated.id, input, "admin.approved", input.message || "Approved");
-    return updated;
+    return withDependencySummary(updated);
   }
 
   function requestChanges(id, input = {}) {
@@ -189,7 +200,7 @@ function createRelay({ dbPath, cwd = process.cwd() }) {
     });
 
     event(updated.id, input, "admin.needs_changes", reason);
-    return updated;
+    return withDependencySummary(updated);
   }
 
   function rejectCard(id, input = {}) {
@@ -206,13 +217,17 @@ function createRelay({ dbPath, cwd = process.cwd() }) {
     });
 
     event(updated.id, input, "admin.rejected", reason);
-    return updated;
+    return withDependencySummary(updated);
   }
 
   function claimCard(id, input = {}) {
     const card = requireCard(id);
     const claimingRole = role(input.role || card.expectedRole);
     assertStatus(card.status, ["ready"], "Only ready cards can be claimed.");
+    const blockingDependencies = listBlockingDependencies(card);
+    if (blockingDependencies.length > 0) {
+      throw new Error(`Card #${card.id} is blocked by ${formatDependencyRefs(blockingDependencies)}.`);
+    }
     if (claimingRole !== card.expectedRole && claimingRole !== "admin") {
       throw new Error(`Card expects ${card.expectedRole}, not ${claimingRole}.`);
     }
@@ -227,7 +242,7 @@ function createRelay({ dbPath, cwd = process.cwd() }) {
     heartbeat({ agent: updated.assignedAgent, role: updated.assignedRole });
     event(updated.id, input, "card.claimed", `${updated.assignedAgent} claimed as ${claimingRole}`);
     return {
-      ...updated,
+      ...withDependencySummary(updated),
       brief: briefCard(updated.id, { role: claimingRole }),
     };
   }
@@ -276,7 +291,7 @@ function createRelay({ dbPath, cwd = process.cwd() }) {
       toStatus: nextStatus,
     });
     return {
-      ...updated,
+      ...withDependencySummary(updated),
       warnings,
     };
   }
@@ -299,7 +314,7 @@ function createRelay({ dbPath, cwd = process.cwd() }) {
       previousAgent: card.assignedAgent,
       previousRole: card.assignedRole,
     });
-    return updated;
+    return withDependencySummary(updated);
   }
 
   function pauseCard(id, input = {}) {
@@ -313,7 +328,7 @@ function createRelay({ dbPath, cwd = process.cwd() }) {
     });
 
     event(updated.id, input, "admin.paused", input.reason || "Paused by admin");
-    return updated;
+    return withDependencySummary(updated);
   }
 
   function cancelCard(id, input = {}) {
@@ -327,7 +342,7 @@ function createRelay({ dbPath, cwd = process.cwd() }) {
     });
 
     event(updated.id, input, "admin.cancelled", input.reason || "Cancelled by admin");
-    return updated;
+    return withDependencySummary(updated);
   }
 
   function completeCard(id, input = {}) {
@@ -342,7 +357,7 @@ function createRelay({ dbPath, cwd = process.cwd() }) {
     });
 
     event(updated.id, input, "admin.done", input.message || "Marked done");
-    return updated;
+    return withDependencySummary(updated);
   }
 
   function addNote(id, input = {}) {
@@ -359,7 +374,7 @@ function createRelay({ dbPath, cwd = process.cwd() }) {
     });
 
     event(updated.id, input, "card.linked", "Updated git links");
-    return updated;
+    return withDependencySummary(updated);
   }
 
   function addContextLayer(input = {}) {
@@ -450,7 +465,7 @@ function createRelay({ dbPath, cwd = process.cwd() }) {
   }
 
   function briefCard(id, input = {}) {
-    const card = requireCard(id);
+    const card = withDependencySummary(requireCard(id));
     const actingRole = role(input.role || card.assignedRole || card.expectedRole);
     const events = store.listEvents(card.id);
     const layers = {};
@@ -474,7 +489,7 @@ function createRelay({ dbPath, cwd = process.cwd() }) {
   }
 
   function getCard(id) {
-    const card = requireCard(id);
+    const card = withDependencySummary(requireCard(id));
     return {
       ...card,
       events: store.listEvents(card.id),
@@ -482,7 +497,30 @@ function createRelay({ dbPath, cwd = process.cwd() }) {
   }
 
   function listCards(filters = {}) {
-    return store.listCards(filters);
+    return store.listCards(filters).map(withDependencySummary);
+  }
+
+  function getCardDependencies(id) {
+    const card = withDependencySummary(requireCard(id));
+    return {
+      card: cardSummary(card),
+      blockedBy: card.blockedBy,
+      blocks: card.blocks,
+      blockingDependencies: card.blockingDependencies,
+      isBlocked: card.isBlocked,
+    };
+  }
+
+  function listCardTransitions(id, input = {}) {
+    const card = withDependencySummary(requireCard(id));
+    const actingRole = role(input.role || card.assignedRole || card.expectedRole);
+    return {
+      card: cardSummary(card),
+      role: actingRole,
+      isBlocked: card.isBlocked,
+      blockingDependencies: card.blockingDependencies,
+      transitions: transitionsFor(card, actingRole),
+    };
   }
 
   function listProjects(input = {}) {
@@ -685,6 +723,177 @@ function createRelay({ dbPath, cwd = process.cwd() }) {
     return layer;
   }
 
+  function withDependencySummary(card) {
+    const blockedBy = store.listCardDependencies(card.id);
+    const blocks = store.listCardDependents(card.id);
+    const blockingDependencies = blockedBy.filter((dependency) => !SATISFIED_DEPENDENCY_STATUSES.has(dependency.status));
+    return {
+      ...card,
+      blockedBy,
+      blocks,
+      blockingDependencies,
+      isBlocked: blockingDependencies.length > 0,
+    };
+  }
+
+  function listBlockingDependencies(card) {
+    return store
+      .listCardDependencies(card.id)
+      .filter((dependency) => !SATISFIED_DEPENDENCY_STATUSES.has(dependency.status));
+  }
+
+  function resolveBlockedByIds(value, cardId = null) {
+    if (value === undefined) return [];
+    const ids = cardIdList(value, "Blocked-by card id");
+    for (const blockedById of ids) {
+      if (blockedById === cardId) throw new Error("A card cannot be blocked by itself.");
+      if (!store.getCardById(blockedById)) throw new Error(`Blocked-by card not found: ${blockedById}`);
+    }
+    if (cardId && wouldCreateDependencyCycle(cardId, ids)) {
+      throw new Error("Card dependencies cannot create a cycle.");
+    }
+    return ids;
+  }
+
+  function wouldCreateDependencyCycle(cardId, nextBlockedByIds) {
+    const stack = [...nextBlockedByIds];
+    const seen = new Set();
+
+    while (stack.length > 0) {
+      const current = stack.pop();
+      if (current === cardId) return true;
+      if (seen.has(current)) continue;
+      seen.add(current);
+      for (const dependency of store.listCardDependencies(current)) stack.push(dependency.id);
+    }
+
+    return false;
+  }
+
+  function transitionsFor(card, actingRole) {
+    const transitions = [];
+    const addTransition = (transition) => transitions.push(transition);
+
+    if (card.status === "ready") {
+      const expected = card.expectedRole;
+      const roleAllowed = actingRole === expected || actingRole === "admin";
+      addTransition({
+        action: "claim",
+        command: `relay claim ${card.id} --role ${expected}`,
+        fromStatus: "ready",
+        toStatus: "in_progress",
+        role: expected,
+        allowed: roleAllowed && !card.isBlocked,
+        reason: card.isBlocked
+          ? `Blocked by ${formatDependencyRefs(card.blockingDependencies)}`
+          : roleAllowed
+            ? ""
+            : `Card expects ${expected}, not ${actingRole}.`,
+      });
+    }
+
+    for (const [nextStatus, roles] of Object.entries(MOVE_RULES[card.status] || {})) {
+      addTransition({
+        action: "move",
+        command: `relay move ${card.id} ${nextStatus} --role ${actingRole}`,
+        fromStatus: card.status,
+        toStatus: nextStatus,
+        role: actingRole,
+        allowed: roles.includes(actingRole) || actingRole === "admin",
+        reason: roles.includes(actingRole) || actingRole === "admin" ? "" : `Requires role ${roles.join(" or ")}.`,
+      });
+    }
+
+    if (["draft", "needs_changes"].includes(card.status) && ["pm", "admin"].includes(actingRole)) {
+      addTransition({
+        action: "submit",
+        command: `relay card submit ${card.id}`,
+        fromStatus: card.status,
+        toStatus: "pending_approval",
+        role: actingRole,
+        allowed: true,
+        reason: "",
+      });
+      addTransition({
+        action: "revise",
+        command: `relay card revise ${card.id} --note "..."`,
+        fromStatus: card.status,
+        toStatus: card.status,
+        role: actingRole,
+        allowed: true,
+        reason: "",
+      });
+    }
+
+    if (actingRole === "admin") {
+      if (card.status === "pending_approval") {
+        for (const action of ["approve", "changes", "reject"]) {
+          addTransition({
+            action: `admin.${action}`,
+            command: adminCommand(action, card.id),
+            fromStatus: card.status,
+            toStatus: adminTargetStatus(action),
+            role: "admin",
+            allowed: true,
+            reason: "",
+          });
+        }
+      }
+
+      if (card.status === "ready") {
+        addTransition({
+          action: "admin.changes",
+          command: adminCommand("changes", card.id),
+          fromStatus: "ready",
+          toStatus: "needs_changes",
+          role: "admin",
+          allowed: true,
+          reason: "",
+        });
+      }
+
+      if (["in_progress", "review", "testing"].includes(card.status) && card.assignedAgent) {
+        addTransition({
+          action: "unclaim",
+          command: `relay unclaim ${card.id} --actor admin`,
+          fromStatus: card.status,
+          toStatus: "ready",
+          role: "admin",
+          allowed: true,
+          reason: "",
+        });
+      }
+
+      if (card.status === "testing") {
+        addTransition({
+          action: "admin.done",
+          command: adminCommand("done", card.id),
+          fromStatus: "testing",
+          toStatus: "done",
+          role: "admin",
+          allowed: true,
+          reason: "",
+        });
+      }
+
+      if (!["done", "rejected", "cancelled"].includes(card.status)) {
+        for (const action of ["pause", "cancel"]) {
+          addTransition({
+            action: `admin.${action}`,
+            command: adminCommand(action, card.id),
+            fromStatus: card.status,
+            toStatus: action === "pause" ? "paused" : "cancelled",
+            role: "admin",
+            allowed: true,
+            reason: "",
+          });
+        }
+      }
+    }
+
+    return transitions;
+  }
+
   function requiresHumanReviewSummary(currentStatus, nextStatus, actingRole) {
     if (actingRole === "admin") return false;
     return (
@@ -832,9 +1041,11 @@ function createRelay({ dbPath, cwd = process.cwd() }) {
     createFeature,
     createProject,
     getCard,
+    getCardDependencies,
     getContextLayer,
     heartbeat,
     linkCard,
+    listCardTransitions,
     listAgentNotifications,
     listCards,
     lintCard,
@@ -913,6 +1124,19 @@ function contextEventMetadata(layer) {
   };
 }
 
+function cardSummary(card) {
+  return {
+    id: card.id,
+    title: card.title,
+    status: card.status,
+    expectedRole: card.expectedRole,
+    assignedRole: card.assignedRole,
+    assignedAgent: card.assignedAgent,
+    featureName: card.featureName,
+    projectName: card.projectName,
+  };
+}
+
 function briefEvent(event) {
   return {
     action: event.action,
@@ -924,6 +1148,10 @@ function briefEvent(event) {
 }
 
 function nextBriefAction(card, actingRole) {
+  if (card.status === "ready" && card.isBlocked) {
+    return `Wait for dependencies to finish: ${formatDependencyRefs(card.blockingDependencies)}.`;
+  }
+
   const actions = {
     ready: {
       developer: `Claim this card with relay claim ${card.id} --role developer, then read feature_brief and project_map before exploring the repo.`,
@@ -1045,6 +1273,53 @@ function valueOrCurrent(value, current, normalize) {
   return normalize(value);
 }
 
+function dependencyInput(input) {
+  if (Object.hasOwn(input, "blockedByIds")) return input.blockedByIds;
+  if (Object.hasOwn(input, "blockedBy")) return input.blockedBy;
+  return undefined;
+}
+
+function cardIdList(value, label) {
+  const rawValues = Array.isArray(value) ? value : [value];
+  const ids = [];
+  const seen = new Set();
+
+  for (const rawValue of rawValues) {
+    for (const token of String(rawValue)
+      .split(",")
+      .map(optionalText)
+      .filter(Boolean)) {
+      const id = positiveInteger(token, label);
+      if (!seen.has(id)) {
+        seen.add(id);
+        ids.push(id);
+      }
+    }
+  }
+
+  return ids;
+}
+
+function formatDependencyRefs(dependencies) {
+  return dependencies.map((dependency) => `#${dependency.id} ${dependency.title} (${dependency.status})`).join(", ");
+}
+
+function adminCommand(action, cardId) {
+  const needsReason = ["changes", "reject"].includes(action);
+  return `relay admin ${action} ${cardId}${needsReason ? ' --reason "..."' : ""}`;
+}
+
+function adminTargetStatus(action) {
+  return {
+    approve: "ready",
+    changes: "needs_changes",
+    reject: "rejected",
+    done: "done",
+    pause: "paused",
+    cancel: "cancelled",
+  }[action];
+}
+
 function revisionFields(input) {
   return [
     ["title", "title"],
@@ -1058,6 +1333,8 @@ function revisionFields(input) {
     ["storyPoints", "storyPoints"],
     ["sprint", "sprint"],
     ["priority", "priority"],
+    ["blockedByIds", "blockedBy"],
+    ["blockedBy", "blockedBy"],
   ]
     .filter(([key]) => Object.hasOwn(input, key))
     .map(([, label]) => label);
@@ -1079,24 +1356,24 @@ function assertStatus(current, allowed, message) {
 function assertMove(current, next, actingRole) {
   if (actingRole === "admin") return;
 
-  const allowed = {
-    in_progress: {
-      review: ["developer"],
-    },
-    review: {
-      in_progress: ["reviewer"],
-      testing: ["reviewer"],
-    },
-    testing: {
-      in_progress: ["tester"],
-    },
-  };
-
-  const roles = allowed[current]?.[next] || [];
+  const roles = MOVE_RULES[current]?.[next] || [];
   if (!roles.includes(actingRole)) {
     throw new Error(`Role ${actingRole} cannot move a card from ${current} to ${next}.`);
   }
 }
+
+const MOVE_RULES = {
+  in_progress: {
+    review: ["developer"],
+  },
+  review: {
+    in_progress: ["reviewer"],
+    testing: ["reviewer"],
+  },
+  testing: {
+    in_progress: ["tester"],
+  },
+};
 
 module.exports = {
   createRelay,

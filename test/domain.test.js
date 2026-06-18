@@ -254,6 +254,103 @@ test("card revise preserves expected role when role flag is omitted", () => {
   app.close();
 });
 
+test("dependencies block claims until blocker is done", () => {
+  const app = seededApp();
+  const foundation = app.createCard({
+    project: "Mobile App",
+    feature: "Login Revamp",
+    title: "Build reset service",
+    problemStatement: "The UI cannot call reset behavior until the service exists.",
+    acceptanceCriteria: "Reset service endpoint exists",
+    definitionOfDone: "Service tests pass.",
+    targetRepo: "git@example.com:mobile/app.git",
+    expectedRole: "developer",
+    riskLevel: "medium",
+    actor: "pm-agent",
+    role: "pm",
+  });
+  const dependent = app.createCard({
+    project: "Mobile App",
+    feature: "Login Revamp",
+    title: "Build reset UI",
+    problemStatement: "The reset UI depends on the reset service contract.",
+    acceptanceCriteria: "UI calls the reset service",
+    definitionOfDone: "UI tests pass.",
+    targetRepo: "git@example.com:mobile/app.git",
+    expectedRole: "developer",
+    riskLevel: "medium",
+    blockedByIds: [foundation.id],
+    actor: "pm-agent",
+    role: "pm",
+  });
+
+  assert.deepEqual(dependent.blockedBy.map((card) => card.id), [foundation.id]);
+  assert.deepEqual(app.getCard(foundation.id).blocks.map((card) => card.id), [dependent.id]);
+
+  app.submitCard(foundation.id, { actor: "pm-agent", role: "pm" });
+  app.approveCard(foundation.id, { actor: "aditya", role: "admin" });
+  app.submitCard(dependent.id, { actor: "pm-agent", role: "pm" });
+  app.approveCard(dependent.id, { actor: "aditya", role: "admin" });
+
+  const blockedTransitions = app.listCardTransitions(dependent.id, { role: "developer" });
+  assert.equal(blockedTransitions.isBlocked, true);
+  assert.equal(blockedTransitions.transitions.find((item) => item.action === "claim").allowed, false);
+  assert.throws(
+    () => app.claimCard(dependent.id, { actor: "ui-agent", role: "developer", agent: "ui-agent" }),
+    /blocked by #/,
+  );
+
+  app.claimCard(foundation.id, { actor: "service-agent", role: "developer", agent: "service-agent" });
+  app.moveCard(foundation.id, { actor: "aditya", role: "admin", status: "testing" });
+  app.completeCard(foundation.id, { actor: "aditya", role: "admin" });
+
+  const readyTransitions = app.listCardTransitions(dependent.id, { role: "developer" });
+  assert.equal(readyTransitions.isBlocked, false);
+  assert.equal(readyTransitions.transitions.find((item) => item.action === "claim").allowed, true);
+  const claimed = app.claimCard(dependent.id, { actor: "ui-agent", role: "developer", agent: "ui-agent" });
+  assert.equal(claimed.status, "in_progress");
+
+  app.close();
+});
+
+test("dependency cycles are rejected", () => {
+  const app = seededApp();
+  const first = app.createCard({
+    project: "Mobile App",
+    feature: "Login Revamp",
+    title: "First reset card",
+    problemStatement: "First card exists.",
+    acceptanceCriteria: "First card can be tracked",
+    definitionOfDone: "First card is specified.",
+    targetRepo: "git@example.com:mobile/app.git",
+    expectedRole: "developer",
+    riskLevel: "low",
+    actor: "pm-agent",
+    role: "pm",
+  });
+  const second = app.createCard({
+    project: "Mobile App",
+    feature: "Login Revamp",
+    title: "Second reset card",
+    problemStatement: "Second card depends on first.",
+    acceptanceCriteria: "Second card records dependency",
+    definitionOfDone: "Second card is specified.",
+    targetRepo: "git@example.com:mobile/app.git",
+    expectedRole: "developer",
+    riskLevel: "low",
+    blockedByIds: [first.id],
+    actor: "pm-agent",
+    role: "pm",
+  });
+
+  assert.throws(
+    () => app.reviseCard(first.id, { actor: "pm-agent", role: "pm", blockedByIds: [second.id] }),
+    /cycle/,
+  );
+
+  app.close();
+});
+
 test("approved cards cannot be revised silently", () => {
   const app = seededApp();
   const card = app.createCard({
