@@ -550,8 +550,14 @@ function contextGapItems(gaps) {
     ...(gaps.reviewWithoutNotes || []).map((card) =>
       contextCardGap(card, "Missing implementation_notes", "Reviewer lacks implementation context.", "review"),
     ),
+    ...(gaps.reviewWithoutHumanSummary || []).map((card) =>
+      contextCardGap(card, "Missing human_review_summary", "Admin lacks a plain-English review summary.", "review"),
+    ),
     ...(gaps.testingWithoutEvidence || []).map((card) =>
       contextCardGap(card, "Missing validation_evidence", "Tester lacks explicit validation claims.", "testing"),
+    ),
+    ...(gaps.testingWithoutHumanSummary || []).map((card) =>
+      contextCardGap(card, "Missing human_review_summary", "Admin lacks a plain-English testing summary.", "testing"),
     ),
   ];
 }

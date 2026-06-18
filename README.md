@@ -13,7 +13,7 @@ The first version is intentionally small:
 - Agent presence: recent CLI activity/heartbeats show who is online
 - Feature and project side navigation for filtered kanban boards
 - Append-only event trail for card activity
-- Context layers and bounded briefs for agent handoffs
+- Context layers, required human review summaries, and bounded briefs for agent handoffs
 - Git repo metadata captured when cards are created
 
 ## Stack
@@ -257,11 +257,13 @@ npm run relay -- agent list
 npm run relay -- admin changes 1 --reason "Acceptance criteria are too vague"
 npm run relay -- admin reject 1 --reason "Not a priority"
 npm run relay -- move 1 review --role developer --handoff-file handoff.md
+npm run relay -- move 1 review --role developer --human-summary-file human-summary.md --handoff-file handoff.md
 npm run relay -- note 1 "Implemented reset token flow" --role developer
 npm run relay -- note 1 $'## Review findings\n- Missing error path\n- Add integration test' --role reviewer
 npm run relay -- context add --feature "Agent Work Control" --type feature_brief --title "Feature brief" --body-file feature.md
 npm run relay -- context add --project "Agent Work Control:Relay" --type project_map --title "Repo map" --body-file map.md
 npm run relay -- context add --card 1 --type implementation_notes --title "Backend changes" --body-file notes.md
+npm run relay -- context add --card 1 --type human_review_summary --title "Human review summary" --body-file human-summary.md
 npm run relay -- context list --card 1 --json
 npm run relay -- context supersede 2 --body - --title "Updated notes" --json
 npm run relay -- agent inbox --agent dev-agent --role developer --unread
@@ -273,6 +275,20 @@ Add `--json` to most commands for agent-readable output.
 Notes support Markdown. Agents can pass real multiline strings, or literal `\n` sequences when that is easier from their shell/runtime.
 
 Use `RELAY_DB` or `--db` only for an explicit non-default control database.
+
+## Token Experiment
+
+Relay includes a small repeatable URL shortener experiment for comparing bounded Relay context with a raw-transcript baseline:
+
+```bash
+node scripts/url-shortener-token-experiment.js
+```
+
+In this experiment, **raw transcript** means the naive baseline where every agent receives the full accumulated context pile: the original goal, PM plan, card details, prior agent notes, implementation notes from every developer, event history, and repo snapshot/code context. Each agent has to figure out what matters from that full transcript.
+
+The Relay group receives role-specific briefs, active context layers, recent events, and human review summaries. The experiment measures estimated context tokens with `ceil(character_count / 4)`, not exact billable model usage, because exact per-agent token telemetry depends on the agent harness.
+
+For the pilot result and caveats, see [docs/url-shortener-token-experiment.md](docs/url-shortener-token-experiment.md).
 
 ## Security Notes
 

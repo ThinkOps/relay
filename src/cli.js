@@ -282,6 +282,10 @@ function dispatch(app, env, parsed, area, action, rest, cwd) {
         inlineKey: "handoff",
         fileKey: "handoff-file",
       }),
+      humanSummary: readOptionalTextSource(flags, cwd, {
+        inlineKey: "human-summary",
+        fileKey: "human-summary-file",
+      }),
     });
   }
 
@@ -587,8 +591,8 @@ Agent loop:
   relay agent ack 34 --agent dev-agent --role developer --json
 
 Role handoffs:
-  developer: claim ready cards, post progress, move in_progress -> review
-  reviewer: post review findings, move review -> testing or review -> in_progress
+  developer: claim ready cards, post progress, move in_progress -> review with --human-summary-file
+  reviewer: post review findings, move review -> testing with --human-summary-file or back to in_progress
   tester: post QA evidence, move testing -> in_progress when fixes are needed
   pm: create/revise/submit cards, respond to admin needs-changes
   admin: approve, request changes, reject, pause, cancel, mark done
@@ -602,6 +606,7 @@ Common commands:
   relay note 12 "Status update" --actor dev-agent --role developer
   relay link 12 --branch feature/reset --commit abc123 --pr https://...
   relay context add --card 12 --type implementation_notes --title "Backend changes" --body-file notes.md
+  relay move 12 review --role developer --human-summary-file human-summary.md --handoff-file handoff.md
   relay context list --card 12 --all --json
   relay context show 5 --json
   relay context supersede 5 --body - --title "Updated notes" --json
@@ -616,6 +621,11 @@ PM card writing:
   User story: use only when there is a real user and outcome. Empty is better than boilerplate.
   Definition of done: mechanical checklist only: tests pass, PR linked, validation_evidence written.
   Size: one card = one agent session = one PR. Run relay card lint before submit.
+
+Human review summary:
+  Required when moving in_progress -> review or review -> testing.
+  Plain English for the admin: goal, changes, previous blockers, claimed fixes, remaining risks, and evidence.
+  Use --human-summary "..." or --human-summary-file human-summary.md.
 
 Model card:
   Title: Add rate limiting to login endpoint

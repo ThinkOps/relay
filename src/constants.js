@@ -21,13 +21,14 @@ const LAYER_TYPES = {
   implementation_notes: { scopes: ["card"], bodyMax: 4000 },
   validation_evidence: { scopes: ["card"], bodyMax: 4000 },
   handoff_intent: { scopes: ["card"], bodyMax: 2000 },
+  human_review_summary: { scopes: ["card"], bodyMax: 3000 },
 };
 const BRIEF_LAYERS = {
-  developer: ["feature_brief", "project_map", "handoff_intent", "implementation_notes"],
-  reviewer: ["feature_brief", "project_map", "implementation_notes", "validation_evidence"],
-  tester: ["feature_brief", "project_map", "validation_evidence", "implementation_notes"],
+  developer: ["feature_brief", "project_map", "handoff_intent", "implementation_notes", "human_review_summary"],
+  reviewer: ["feature_brief", "project_map", "human_review_summary", "implementation_notes", "validation_evidence"],
+  tester: ["feature_brief", "project_map", "human_review_summary", "validation_evidence", "implementation_notes"],
   pm: ["feature_brief", "project_map", "handoff_intent"],
-  admin: ["feature_brief", "project_map", "implementation_notes", "validation_evidence", "handoff_intent"],
+  admin: ["feature_brief", "project_map", "human_review_summary", "implementation_notes", "validation_evidence", "handoff_intent"],
 };
 const WIP_LIMITS = {
   ready: 8,

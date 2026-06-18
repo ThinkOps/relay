@@ -132,8 +132,13 @@ test("context CLI adds, lists, shows, and supersedes markdown bodies", () => {
   const dbPath = path.join(root, ".relay", "relay.db");
   const bodyPath = path.join(root, "notes.md");
   const handoffPath = path.join(root, "handoff.md");
+  const humanSummaryPath = path.join(root, "human-summary.md");
   fs.writeFileSync(bodyPath, "## Backend changes\n- Added reset validation\n");
   fs.writeFileSync(handoffPath, "Reviewer should start with reset validation.\n");
+  fs.writeFileSync(
+    humanSummaryPath,
+    "Goal: wire reset validation. Claimed fix: backend changes are ready for review. Evidence: targeted tests pass.\n",
+  );
 
   const app = createRelay({ dbPath, cwd: process.cwd() });
   app.createFeature({ name: "Login Revamp", actor: "pm-agent", role: "pm" });
@@ -274,6 +279,8 @@ test("context CLI adds, lists, shows, and supersedes markdown bodies", () => {
       "developer",
       "--handoff-file",
       handoffPath,
+      "--human-summary-file",
+      humanSummaryPath,
       "--json",
     ]),
   );
@@ -293,6 +300,21 @@ test("context CLI adds, lists, shows, and supersedes markdown bodies", () => {
     ]),
   );
   assert.equal(handoff[0].bodyMarkdown, "Reviewer should start with reset validation.");
+
+  const humanSummary = JSON.parse(
+    runRelay([
+      "--db",
+      dbPath,
+      "context",
+      "list",
+      "--card",
+      String(card.id),
+      "--type",
+      "human_review_summary",
+      "--json",
+    ]),
+  );
+  assert.match(humanSummary[0].bodyMarkdown, /wire reset validation/);
 
   const lint = JSON.parse(runRelay(["--db", dbPath, "card", "lint", String(card.id), "--json"]));
   assert.deepEqual(lint, []);

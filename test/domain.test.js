@@ -288,7 +288,12 @@ test("review send-backs notify the assigned developer", () => {
   app.submitCard(card.id, { actor: "pm-agent", role: "pm" });
   app.approveCard(card.id, { actor: "aditya", role: "admin" });
   app.claimCard(card.id, { actor: "dev-agent", role: "developer", agent: "dev-agent" });
-  app.moveCard(card.id, { actor: "dev-agent", role: "developer", status: "review" });
+  app.moveCard(card.id, {
+    actor: "dev-agent",
+    role: "developer",
+    status: "review",
+    humanSummary: "Goal: review reset implementation. Claimed fix: implementation is ready for reviewer checks.",
+  });
   app.moveCard(card.id, { actor: "review-agent", role: "reviewer", status: "in_progress" });
 
   const inbox = app.listAgentNotifications({ agent: "dev-agent", unread: true });
@@ -351,8 +356,18 @@ test("only admin can mark cards done", () => {
   app.submitCard(card.id, { actor: "pm-agent", role: "pm" });
   app.approveCard(card.id, { actor: "aditya", role: "admin" });
   app.claimCard(card.id, { actor: "dev-agent", role: "developer", agent: "dev-agent" });
-  app.moveCard(card.id, { actor: "dev-agent", role: "developer", status: "review" });
-  app.moveCard(card.id, { actor: "review-agent", role: "reviewer", status: "testing" });
+  app.moveCard(card.id, {
+    actor: "dev-agent",
+    role: "developer",
+    status: "review",
+    humanSummary: "Goal: ship reset tests. Claimed fix: implementation is ready for review.",
+  });
+  app.moveCard(card.id, {
+    actor: "review-agent",
+    role: "reviewer",
+    status: "testing",
+    humanSummary: "Goal: ship reset tests. Review result: ready for tester verification.",
+  });
 
   assert.throws(
     () => app.moveCard(card.id, { actor: "test-agent", role: "tester", status: "done" }),
@@ -647,7 +662,12 @@ test("brief returns bounded card context with latest active layers", () => {
   app.approveCard(card.id, { actor: "aditya", role: "admin" });
   app.claimCard(card.id, { actor: "dev-agent", role: "developer", agent: "dev-agent" });
   app.addNote(card.id, { actor: "dev-agent", role: "developer", message: "Ready for review." });
-  app.moveCard(card.id, { actor: "dev-agent", role: "developer", status: "review" });
+  app.moveCard(card.id, {
+    actor: "dev-agent",
+    role: "developer",
+    status: "review",
+    humanSummary: "Goal: review reset implementation. Claimed fix: token validation is ready for review. Evidence: reset tests pass.",
+  });
 
   const brief = app.briefCard(card.id, { role: "reviewer" });
 
@@ -656,6 +676,7 @@ test("brief returns bounded card context with latest active layers", () => {
   assert.equal(brief.layers.project_map.layerType, "project_map");
   assert.equal(brief.layers.implementation_notes.id, activeNotes.id);
   assert.equal(brief.layers.validation_evidence.id, evidence.id);
+  assert.equal(brief.layers.human_review_summary.layerType, "human_review_summary");
   assert.equal(brief.decisions.length, 1);
   assert.equal(brief.decisions[0].action, "admin.approved");
   assert.equal(brief.recentEvents.length, 5);
@@ -761,18 +782,50 @@ test("context gaps return projects and cards missing active context", () => {
     role: "developer",
   });
 
-  app.moveCard(reviewMissing.id, { actor: "dev-agent", role: "developer", status: "review" });
-  app.moveCard(reviewCovered.id, { actor: "dev-agent", role: "developer", status: "review" });
-  app.moveCard(testingMissing.id, { actor: "dev-agent", role: "developer", status: "review" });
-  app.moveCard(testingMissing.id, { actor: "review-agent", role: "reviewer", status: "testing" });
-  app.moveCard(testingCovered.id, { actor: "dev-agent", role: "developer", status: "review" });
-  app.moveCard(testingCovered.id, { actor: "review-agent", role: "reviewer", status: "testing" });
+  app.moveCard(reviewMissing.id, {
+    actor: "dev-agent",
+    role: "developer",
+    status: "review",
+    humanSummary: "Goal: verify review gap behavior. Claimed fix: ready for reviewer checks.",
+  });
+  app.moveCard(reviewCovered.id, {
+    actor: "dev-agent",
+    role: "developer",
+    status: "review",
+    humanSummary: "Goal: verify review coverage. Claimed fix: implementation notes are present.",
+  });
+  app.moveCard(testingMissing.id, {
+    actor: "dev-agent",
+    role: "developer",
+    status: "review",
+    humanSummary: "Goal: verify testing gap behavior. Claimed fix: ready for review.",
+  });
+  app.moveCard(testingMissing.id, {
+    actor: "review-agent",
+    role: "reviewer",
+    status: "testing",
+    humanSummary: "Goal: verify testing gap behavior. Review result: ready for tester checks.",
+  });
+  app.moveCard(testingCovered.id, {
+    actor: "dev-agent",
+    role: "developer",
+    status: "review",
+    humanSummary: "Goal: verify testing coverage. Claimed fix: ready for review.",
+  });
+  app.moveCard(testingCovered.id, {
+    actor: "review-agent",
+    role: "reviewer",
+    status: "testing",
+    humanSummary: "Goal: verify testing coverage. Review result: validation evidence is present.",
+  });
 
   const gaps = app.contextGaps();
   assert.deepEqual(gaps.missingFeatureBriefs.map((feature) => feature.name), ["API"]);
   assert.deepEqual(gaps.missingProjectMaps.map((project) => project.name), ["Backend"]);
   assert.deepEqual(gaps.reviewWithoutNotes.map((card) => card.id), [reviewMissing.id]);
   assert.deepEqual(gaps.testingWithoutEvidence.map((card) => card.id), [testingMissing.id]);
+  assert.deepEqual(gaps.reviewWithoutHumanSummary, []);
+  assert.deepEqual(gaps.testingWithoutHumanSummary, []);
   assert.equal(gaps.reviewWithoutNotes[0].projectName, "Mobile App");
   assert.equal(gaps.testingWithoutEvidence[0].featureName, "API");
 
@@ -885,18 +938,32 @@ test("claim returns a brief and move manages handoff context with soft warnings"
   assert.equal(claimed.brief.card.id, card.id);
   assert.equal(claimed.brief.card.status, "in_progress");
 
+  assert.throws(
+    () =>
+      app.moveCard(card.id, {
+        actor: "dev-agent",
+        role: "developer",
+        status: "review",
+        handoff: "Reviewer should start with reset token expiry.",
+      }),
+    /requires a human review summary/,
+  );
+
   const missingNotesMove = app.moveCard(card.id, {
     actor: "dev-agent",
     role: "developer",
     status: "review",
     handoff: "Reviewer should start with reset token expiry.",
+    humanSummary: "Goal: make reset lifecycle reviewable. Claimed fix: reset token expiry is implemented. Evidence: targeted tests pass.",
   });
   const firstHandoff = app.listContextLayers({ card: card.id, type: "handoff_intent" })[0];
+  const firstHumanSummary = app.listContextLayers({ card: card.id, type: "human_review_summary" })[0];
 
   assert.deepEqual(missingNotesMove.warnings, [
     `Card #${card.id} has no implementation_notes; the reviewer will lack context.`,
   ]);
   assert.equal(firstHandoff.bodyMarkdown, "Reviewer should start with reset token expiry.");
+  assert.match(firstHumanSummary.bodyMarkdown, /reset lifecycle/);
 
   app.moveCard(card.id, {
     actor: "review-agent",
@@ -924,13 +991,31 @@ test("claim returns a brief and move manages handoff context with soft warnings"
     actor: "dev-agent",
     role: "developer",
     status: "review",
+    humanSummary: "Goal: make reset lifecycle reviewable. Claimed fix: invalid-token tests were added. Evidence: targeted tests pass.",
   });
   assert.deepEqual(cleanReviewMove.warnings, []);
+  const humanSummaries = app.listContextLayers({
+    card: card.id,
+    type: "human_review_summary",
+    includeSuperseded: true,
+  });
+  assert.equal(humanSummaries[0].supersedesId, firstHumanSummary.id);
+
+  assert.throws(
+    () =>
+      app.moveCard(card.id, {
+        actor: "review-agent",
+        role: "reviewer",
+        status: "testing",
+      }),
+    /requires a human review summary/,
+  );
 
   const missingEvidenceMove = app.moveCard(card.id, {
     actor: "review-agent",
     role: "reviewer",
     status: "testing",
+    humanSummary: "Goal: make reset lifecycle testable. Review result: ready for QA; evidence layer is still missing.",
   });
   assert.deepEqual(missingEvidenceMove.warnings, [
     `Card #${card.id} has no validation_evidence; the tester will lack context.`,

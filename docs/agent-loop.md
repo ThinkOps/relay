@@ -25,11 +25,38 @@ During work:
    relay context add --card <card-id> --type implementation_notes --title "Implementation notes" --body-file notes.md --actor <agent-name> --role developer --json
 3. For QA/admin handoff, write validation_evidence:
    relay context add --card <card-id> --type validation_evidence --title "Validation evidence" --body-file evidence.md --actor <agent-name> --role tester --json
-4. Move with a handoff:
-   relay move <card-id> review --actor <agent-name> --role developer --handoff-file handoff.md --json
+4. Before moving into review or testing, write a human_review_summary in plain English. It must let a non-specialist admin understand the goal, what changed, prior blockers, claimed fixes, remaining risks, and evidence without reading the raw agent notes.
+5. Move with a handoff and human summary:
+   relay move <card-id> review --actor <agent-name> --role developer --handoff-file handoff.md --human-summary-file human-summary.md --json
 
 If a layer already exists and your version replaces it, supersede it instead of adding another competing layer:
 relay context supersede <layer-id> --body-file notes.md --title "Updated implementation notes" --actor <agent-name> --role <role> --json
+```
+
+## Human Review Summary
+
+Required when moving `in_progress -> review` or `review -> testing`.
+
+Use this shape:
+
+```text
+Goal:
+Plain-English description of what this card is supposed to accomplish.
+
+What changed:
+- 3-5 bullets, no repo jargon unless unavoidable.
+
+Previous blockers:
+- What review/admin previously rejected, or "None".
+
+Claimed fixes:
+- Map each blocker or acceptance criterion to the fix.
+
+Remaining risks:
+- Known gaps, scope exclusions, follow-up cards, or "None known".
+
+Evidence:
+- Tests/checks run, PR link, and anything not verified.
 ```
 
 ## PM Card Rules

@@ -1088,7 +1088,9 @@ function createStore(dbPath) {
         .all()
         .map(mapProject),
       reviewWithoutNotes: listCardsMissingContextLayer("review", "implementation_notes"),
+      reviewWithoutHumanSummary: listCardsMissingContextLayer("review", "human_review_summary"),
       testingWithoutEvidence: listCardsMissingContextLayer("testing", "validation_evidence"),
+      testingWithoutHumanSummary: listCardsMissingContextLayer("testing", "human_review_summary"),
     };
   }
 

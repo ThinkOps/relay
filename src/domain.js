@@ -238,12 +238,29 @@ function createRelay({ dbPath, cwd = process.cwd() }) {
     const actingRole = role(input.role || card.assignedRole || "developer");
     assertMove(card.status, nextStatus, actingRole);
     const warnings = moveWarnings(card, nextStatus);
+    const humanSummary = input.humanSummary || input.humanReviewSummary || input.reviewSummary;
+
+    if (requiresHumanReviewSummary(card.status, nextStatus, actingRole)) {
+      if (!hasText(humanSummary)) {
+        throw new Error(
+          "Moving to review or testing requires a human review summary. Use --human-summary or --human-summary-file with a plain-English summary of goal, changes, prior blockers, claimed fixes, remaining risks, and evidence.",
+        );
+      }
+    }
 
     if (hasText(input.handoff)) {
-      upsertHandoffIntent(card, {
+      upsertCardContextLayer(card, "handoff_intent", "Handoff intent", {
         actor: actor(input.actor),
         role: actingRole,
         bodyMarkdown: contextBody(input.handoff, "handoff_intent"),
+      });
+    }
+
+    if (hasText(humanSummary)) {
+      upsertCardContextLayer(card, "human_review_summary", "Human review summary", {
+        actor: actor(input.actor),
+        role: actingRole,
+        bodyMarkdown: contextBody(humanSummary, "human_review_summary"),
       });
     }
 
@@ -599,9 +616,8 @@ function createRelay({ dbPath, cwd = process.cwd() }) {
     return null;
   }
 
-  function upsertHandoffIntent(card, input) {
-    const title = "Handoff intent";
-    const [active] = store.listContextLayers({ cardId: card.id, layerType: "handoff_intent" });
+  function upsertCardContextLayer(card, layerType, title, input) {
+    const [active] = store.listContextLayers({ cardId: card.id, layerType });
 
     if (active) {
       const result = store.supersedeContextLayer(active.id, {
@@ -629,7 +645,7 @@ function createRelay({ dbPath, cwd = process.cwd() }) {
       projectId: null,
       featureId: null,
       cardId: card.id,
-      layerType: "handoff_intent",
+      layerType,
       title,
       bodyMarkdown: input.bodyMarkdown,
       actor: input.actor,
@@ -646,6 +662,14 @@ function createRelay({ dbPath, cwd = process.cwd() }) {
     });
     notifyMentionedAgents(layer.cardId, storedEvent, layer.bodyMarkdown);
     return layer;
+  }
+
+  function requiresHumanReviewSummary(currentStatus, nextStatus, actingRole) {
+    if (actingRole === "admin") return false;
+    return (
+      (currentStatus === "in_progress" && nextStatus === "review") ||
+      (currentStatus === "review" && nextStatus === "testing")
+    );
   }
 
   function moveWarnings(card, nextStatus) {

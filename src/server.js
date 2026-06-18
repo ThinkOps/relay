@@ -254,7 +254,9 @@ function inboxView(app) {
     contextGaps.missingFeatureBriefs.length +
     contextGaps.missingProjectMaps.length +
     contextGaps.reviewWithoutNotes.length +
-    contextGaps.testingWithoutEvidence.length;
+    contextGaps.reviewWithoutHumanSummary.length +
+    contextGaps.testingWithoutEvidence.length +
+    contextGaps.testingWithoutHumanSummary.length;
 
   for (const card of cards) {
     const latest = card.events.at(-1);
