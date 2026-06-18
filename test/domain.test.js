@@ -177,6 +177,52 @@ test("pm can revise a needs-changes card and resubmit it", () => {
   app.close();
 });
 
+test("card revise preserves expected role when role flag is omitted", () => {
+  const app = seededApp();
+  const card = app.createCard({
+    project: "Mobile App",
+    feature: "Login Revamp",
+    title: "Keep developer claimable",
+    problemStatement: "Needs-changes revisions must not turn developer work into PM work.",
+    acceptanceCriteria: "Developer can still claim after PM revises without a role flag",
+    definitionOfDone: "Approved card remains claimable by a developer.",
+    targetRepo: "git@example.com:mobile/app.git",
+    expectedRole: "developer",
+    riskLevel: "low",
+    actor: "pm-agent",
+    role: "pm",
+  });
+
+  app.submitCard(card.id, { actor: "pm-agent", role: "pm" });
+  app.requestChanges(card.id, {
+    actor: "aditya",
+    role: "admin",
+    reason: "Acceptance criteria need one more pass.",
+  });
+
+  const revised = app.reviseCard(card.id, {
+    actor: "pm-agent",
+    role: "pm",
+    problemStatement: "Needs-changes revisions must preserve the expected implementation role.",
+    acceptanceCriteria: ["Developer can still claim after PM revises without a role flag"],
+    submit: true,
+  });
+  app.approveCard(card.id, { actor: "aditya", role: "admin" });
+  const approved = app.getCard(card.id);
+  const claimed = app.claimCard(card.id, {
+    actor: "dev-agent",
+    role: "developer",
+    agent: "dev-agent",
+  });
+
+  assert.equal(revised.expectedRole, "developer");
+  assert.equal(approved.expectedRole, "developer");
+  assert.equal(claimed.status, "in_progress");
+  assert.equal(claimed.assignedAgent, "dev-agent");
+
+  app.close();
+});
+
 test("approved cards cannot be revised silently", () => {
   const app = seededApp();
   const card = app.createCard({
