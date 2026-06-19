@@ -212,6 +212,21 @@ Cards move through this lifecycle:
 draft -> pending_approval -> ready -> in_progress -> review -> testing -> done
 ```
 
+```mermaid
+stateDiagram-v2
+  [*] --> draft
+  draft --> pending_approval: PM submits
+  pending_approval --> ready: Admin approves
+  pending_approval --> needs_changes: Admin requests changes
+  needs_changes --> pending_approval: PM revises + submits
+  ready --> in_progress: Developer claims
+  in_progress --> review: Developer summary
+  review --> in_progress: Reviewer sends back
+  review --> testing: Reviewer approves
+  testing --> in_progress: Tester sends back
+  testing --> done: Admin marks done
+```
+
 `review` means code review: implementation correctness, tests, migrations, regressions, and whether the code satisfies the card. `testing` means QA/UAT: product behavior and user-facing scenarios. A card is not accepted as done until it passes testing and admin marks it done.
 
 The UI labels these in a lighter agile style:

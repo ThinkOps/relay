@@ -1,26 +1,42 @@
-# Relay: A Control Plane for Agent Work
+# Relay: A Human-Readable Control Plane for Agent Work
 
-_Why we added human approval, bounded briefs, and context layers before trying to scale multi-agent software work._
+_Why we built an admin-first workflow for AI agents, what Relay does, how context layers reduce repeated reading, and what is still only a working hypothesis._
 
-AI agents are already useful for individual coding tasks. They can explore a repo, write a patch, run tests, explain tradeoffs, and hand back a result.
+_Disclosure: this post was written by Aditya's agent, based on the Relay implementation, docs, and working notes._
 
-The harder problem starts when the work stops being one prompt and one response.
+AI agents are already useful for individual coding tasks.
+
+They can explore a repo, write a patch, run tests, explain a tradeoff, and hand the result back to a human.
+
+The harder problem starts when the work stops being one prompt and one answer.
 
 What happens when one agent proposes work, another implements it, another reviews it, another tests it, and a human still needs to decide what is allowed to start and what is actually done?
 
 That is the problem Relay is trying to solve.
 
-Relay is an admin-first project board for managing agent work. PM agents can propose scoped cards, but execution starts only after admin approval. Developer, reviewer, and tester agents work through a shared CLI contract. The human admin gets a local web board, an inbox, approval controls, card timelines, agent presence, and context gaps.
+Relay is an admin-first project board for managing agent work. A PM agent can propose scoped cards. A human admin approves or sends them back. Developer, reviewer, and tester agents work through a shared CLI contract. The human gets a local board, inbox, card timelines, agent presence, dependency visibility, and context gaps.
 
-The goal is not to build another general-purpose project management tool. The goal is narrower: give humans a readable control surface, and give agents bounded context so every session does not start from scratch.
+The goal is not to build Jira for agents.
 
-## Why Relay Exists
+The goal is narrower: make agent work readable to humans, and make agent context bounded enough that every session does not start from zero.
 
-Single-agent work can be informal. You give the agent context, it explores the repo, it makes a change, and it reports back.
+## The Problem: Agent Work Becomes Unreadable Fast
 
-Continuous agent work needs more structure.
+Single-agent work can stay informal.
 
-Once multiple agent sessions are involved, the same questions keep coming back:
+You give the agent context. It explores the repo. It makes a change. It runs tests. It reports back.
+
+That breaks down when the work becomes continuous.
+
+The same project starts to involve several roles:
+
+- a PM agent that breaks a goal into cards;
+- a developer agent that claims approved work;
+- a reviewer agent that checks implementation quality;
+- a tester agent that validates behavior;
+- a human admin who decides what starts and what is done.
+
+Once that happens, the same questions keep coming back:
 
 - Which cards are approved?
 - Who owns this work?
@@ -28,22 +44,24 @@ Once multiple agent sessions are involved, the same questions keep coming back:
 - What changed in the implementation?
 - What should the reviewer inspect first?
 - Which tests were actually run?
-- Is this card waiting on a human, a developer, a reviewer, or a tester?
+- Is this blocked on another card?
 - Is the next agent reading a clean handoff or a long pile of logs?
 
-Without a shared system, each new session tends to rediscover too much. It reads the repo again. It reads the card history again. It reconstructs intent from notes, timelines, and partial handoffs.
+Without a shared control surface, every new agent session tends to rediscover too much.
 
-That repeated rediscovery is expensive. It costs tokens, time, and attention. More importantly, it makes the human view of the work blurry.
+It rereads the repo. It rereads the card history. It reconstructs intent from partial notes, stale handoffs, and raw transcripts. That costs tokens, time, and attention. More importantly, it makes the human view blurry.
 
-Relay exists to make agent work visible to humans and bounded for agents.
+The human should not need to read an entire agent transcript to answer, "What is waiting on me?" or "Why is this card blocked?"
+
+Relay exists to keep the work visible.
 
 ## What Relay Is
 
-Relay has two main surfaces.
+Relay has two surfaces.
 
-Agents use a CLI. They can create cards, submit cards, claim work, read briefs, post notes, write handoff layers, move cards through the workflow, and check their inbox.
+Agents use a CLI. They can create cards, submit cards, claim work, read briefs, post notes, attach context, move cards through the workflow, check their inbox, inspect dependencies, and ask which transitions are valid.
 
-Humans use a local web UI. They can review pending work, approve or reject cards, inspect timelines, see assigned agents, read context, and find cards that are moving without enough handoff information.
+Humans use a local web UI. They can review pending work, approve or reject cards, inspect timelines, see assigned agents, read context, spot blocked cards, and find cards that are missing handoff information.
 
 Under the hood, Relay is intentionally small: Node.js, built-in SQLite, a plain HTTP server, and static HTML/CSS/JS. The current version has no runtime npm dependencies.
 
@@ -53,91 +71,238 @@ The core workflow is:
 draft -> pending_approval -> ready -> in_progress -> review -> testing -> done
 ```
 
-PM agents can draft and submit cards. Admin approves before execution. Developer agents claim ready work. Reviewers inspect implementation. Testers validate behavior. Admin marks done.
+At a high level, Relay separates human control from agent execution:
 
-That state machine matters because it keeps the human in the loop at the points that matter most: before work starts and before work is considered finished.
+```text
+PM agent          Human admin          Dev agent        Reviewer        Tester        Human admin
+   |                   |                   |               |              |               |
+   | draft card        |                   |               |              |               |
+   |------------------>| review scope      |               |              |               |
+   |                   | approve/reject    |               |              |               |
+   |                   |------------------>| claim + brief |              |               |
+   |                   |                   | implement     |              |               |
+   |                   |                   |-------------> | review       |               |
+   |                   |                   |               |------------> | validate      |
+   |                   |                   |               |              |-------------> | mark done
+```
+
+That state machine matters.
+
+PM agents can draft and submit cards. Execution starts only after admin approval. Developer agents claim ready work. Reviewers inspect implementation. Testers validate behavior. Admin marks work done.
+
+Relay also supports operational recovery:
+
+- admin can unclaim active work when an agent dies;
+- admin can send approved but unclaimed work back for changes;
+- cards can declare dependencies with `--blocked-by`;
+- blocked ready cards cannot be claimed until blockers are done;
+- agents can ask `relay card transitions <id> --role <role>` instead of learning the workflow by failed commands.
+
+The product is small, but the boundaries are deliberate.
 
 ## The Human-Readable View
 
-Agent transcripts are useful, but they are not a management surface.
+Agent transcripts are useful for debugging. They are not a management surface.
 
-A human admin should not have to read raw conversations just to answer basic operational questions:
+A human admin should be able to scan:
 
-- What needs my approval?
-- What is in progress?
-- Which agent owns it?
-- What changed?
-- What evidence exists?
-- Where did I ask for changes?
-- Which cards are missing handoff context?
+- what needs approval;
+- what is in progress;
+- who owns it;
+- what is blocked;
+- where a reviewer or tester sent work back;
+- what evidence exists;
+- which cards are missing implementation notes, validation evidence, or human summaries.
 
-Relay turns those questions into board state, inbox items, card timelines, agent presence, and context gaps.
+Relay turns those questions into board state, inbox items, card timelines, agent presence, dependency signals, and context gaps.
 
-The board shows the workflow. The approval queue shows cards waiting for a decision. The inbox collects admin-relevant events. Agent presence shows who recently touched the system. Card detail shows the history and context around one unit of work.
+The live board shows the workflow. The approval queue shows cards waiting for a decision. The inbox collects admin-relevant events. Agent presence shows which named agents have checked in recently. Card detail shows the card, notes, context layers, dependencies, and event history.
 
-The intent is simple: keep the human view readable even when the agent side is busy.
+This is the main human-facing bet: the human should supervise state, summaries, and evidence, not raw conversational noise.
 
-## How Agent Work Flows
+That does not mean Relay tries to make every agent message beautiful. It does not.
 
-A PM agent starts by creating a scoped card. A good card names the problem, acceptance criteria, definition of done, target repo, risk level, and expected role.
+Relay's responsibility is to make the important handoff points readable. That is why we added typed context layers, human review summaries, and visible gaps. If an agent writes a messy progress note, the timeline can hold it. But when work moves from developer to reviewer, or reviewer to tester, Relay can require a plain-English summary.
 
-The PM submits the card. The admin reviews it. If the card is too vague, too large, solution-shaped, or missing testable acceptance criteria, the admin can request changes. If it is clear enough, the admin approves it.
+That is the difference between "all output must be perfect" and "the workflow must force readable checkpoints."
 
-Once approved, a developer agent claims the card. Claiming returns the role-specific brief immediately, so the first read path is already bounded.
+## How Work Flows Through Relay
 
-During implementation, the developer posts progress and writes `implementation_notes`: what changed, why it changed, tradeoffs, and files touched. When moving the card to review, the developer can also write `handoff_intent`: what the next role should do first.
+A PM agent starts by creating a scoped card:
 
-The reviewer reads the brief and implementation notes, then either sends the card back to development or moves it to testing. The tester writes `validation_evidence`: tests run, builds checked, behavior verified, and known gaps.
+```bash
+relay card create \
+  --feature "Login Revamp" \
+  --project "Mobile App" \
+  --title "Add reset token expiry" \
+  --story "As an account holder, I want expired reset links rejected so old links cannot be reused" \
+  --problem "Reset tokens currently remain valid indefinitely. Anyone with an old email link can attempt to reuse it." \
+  --ac "Expired reset tokens are rejected" \
+  --ac "Valid unexpired reset tokens continue to work" \
+  --ac "Tests cover expired, invalid, and valid token paths" \
+  --done "Tests pass, PR linked, validation_evidence written" \
+  --points 3 \
+  --role developer
+```
 
-The admin can then read the card, the notes, and the evidence before marking it done.
+If the work depends on another card, the PM can say that directly:
 
-This is the shape Relay is optimizing for: a state machine, a human approval gate, agent-readable commands, and handoff memory between roles.
+```bash
+relay card create \
+  --feature "Login Revamp" \
+  --project "Mobile App" \
+  --title "Build reset UI" \
+  --problem "The UI depends on the reset service contract." \
+  --ac "UI calls the reset service" \
+  --done "UI tests pass" \
+  --blocked-by 12 \
+  --role developer
+```
+
+Dependency handling stays intentionally simple:
+
+```text
+Card #12: Build reset service
+    status: done
+       |
+       v
+Card #13: Build reset UI
+    blocked-by: #12
+    claimable only after #12 is done
+```
+
+The PM submits the card:
+
+```bash
+relay card submit 13 --actor pm-agent --role pm
+```
+
+The admin reviews it. If the card is vague, too large, solution-shaped, or missing testable acceptance criteria, the admin sends it back:
+
+```bash
+relay admin changes 13 --reason "Acceptance criteria need clearer pass/fail behavior"
+```
+
+If the card is clear enough, the admin approves it:
+
+```bash
+relay admin approve 13 --actor aditya
+```
+
+Once approved, a developer agent can claim it:
+
+```bash
+relay claim 13 --agent dev-agent --role developer --json
+```
+
+Claiming returns the role-specific brief immediately. The first read path is already bounded.
+
+During work, the developer posts notes and writes implementation context:
+
+```bash
+relay note 13 "Implemented expiry checks and added invalid-token tests." \
+  --actor dev-agent \
+  --role developer
+
+relay context add \
+  --card 13 \
+  --type implementation_notes \
+  --title "Reset token expiry implementation" \
+  --body-file notes.md \
+  --actor dev-agent \
+  --role developer
+```
+
+When the developer moves the card to review, Relay requires a human-readable review summary:
+
+```bash
+relay move 13 review \
+  --actor dev-agent \
+  --role developer \
+  --human-summary-file human-summary.md \
+  --handoff-file handoff.md
+```
+
+That summary is not a transcript. It is a plain-English checkpoint: goal, changes, previous blockers, claimed fixes, remaining risks, and evidence.
+
+The reviewer reads the brief and implementation notes, then either sends the card back to development or moves it to testing with another summary. The tester writes validation evidence. The admin reads the evidence and marks the card done.
+
+This is the shape Relay optimizes for: propose, approve, claim, work, summarize, review, test, close.
 
 ## The Token Consumption Problem
 
-The naive way to coordinate agents is to let every agent read the full card history and inspect the repo from scratch.
+The naive way to coordinate agents is to let every agent read everything.
 
-That works for small examples. It does not scale well as a pattern.
+Every agent gets the original goal, the PM plan, all prior notes, every event, implementation details, test output, review findings, and a repo snapshot. Then each agent decides what matters.
 
-There are three obvious sources of waste:
+That works for small examples. It does not scale well.
 
-1. Timeline rereads. Every stage inherits all earlier events, even when most events are not useful for the current role.
+There are three common sources of waste:
+
+1. Timeline rereads. Every stage inherits all earlier events, even when most events are irrelevant to the current role.
 2. Repo rediscovery. Every agent spends tokens learning the same file layout, commands, conventions, and service boundaries.
 3. Unstructured handoffs. The next agent has to infer what matters from notes instead of reading a typed summary.
 
 Relay addresses this with context layers and briefs.
 
-## Context Layers
+The difference is not that Relay hides context. It changes the default read path:
+
+```text
+Raw transcript handoff
+  goal + PM plan + all events + all notes + repo snapshot + logs + corrections
+       |
+       v
+  every agent separates signal from noise again
+
+Relay handoff
+  card fields + role brief + active layers + recent events + dependency state
+       |
+       v
+  each agent starts from the summary meant for its role
+```
+
+## Context Layers: Memory With Boundaries
 
 Context layers are typed markdown artifacts stored outside the raw card timeline. They are durable, scoped, and bounded at write time.
 
 The current layer types are:
 
-- `feature_brief`: product and cross-project context for a feature.
-- `project_map`: repo structure, key files, commands, and conventions.
-- `implementation_notes`: what changed, why, tradeoffs, and files touched.
-- `validation_evidence`: tests run, builds, validation results, and known gaps.
-- `handoff_intent`: what the next role should do first.
+- `feature_brief`: product and cross-project context for a feature;
+- `project_map`: repo structure, key files, commands, and conventions;
+- `implementation_notes`: what changed, why, tradeoffs, and files touched;
+- `validation_evidence`: tests run, builds, validation results, and known gaps;
+- `handoff_intent`: what the next role should do first;
+- `human_review_summary`: a plain-English summary for human and role handoff review.
 
-Each layer type has a character cap. `feature_brief` and `project_map` are capped at 8000 characters. `implementation_notes` and `validation_evidence` are capped at 4000. `handoff_intent` is capped at 2000.
+Each layer type has a character cap. For example, `feature_brief` and `project_map` are capped at 8000 characters, `implementation_notes` and `validation_evidence` at 4000, `human_review_summary` at 3000, and `handoff_intent` at 2000.
 
-These are not exact token limits. Different models tokenize text differently. But character caps still force the right behavior: agents must summarize. A layer cannot quietly become a dumped transcript.
+These are not exact token limits. Different models tokenize text differently.
+
+But character caps still force the right behavior: agents must summarize. A layer cannot quietly become a dumped transcript.
 
 Layers are immutable. If a layer needs to change, a new layer supersedes the old one. The latest active layer is cheap to read, and the older version remains available for audit.
 
 The important design choice is that Relay does not truncate at read time. Truncation hides information unpredictably. Relay enforces size at write time, while the author still has context and can produce a deliberate summary.
 
-## Briefs
+## Briefs: The Bounded Read Path
 
 The `relay brief` command is the bounded read path.
 
-Instead of returning the full event history, a brief returns the card fields, relevant active layers, admin decisions, the last few recent events, and a simple next action.
+Instead of returning the full event history, a brief returns:
+
+- the card fields;
+- relevant active context layers;
+- admin decisions;
+- the last few recent events;
+- recent send-back reasons when useful;
+- dependency state;
+- a simple next action.
 
 Different roles get different context.
 
-Developers need the feature brief, project map, handoff intent, and sometimes prior implementation notes. Reviewers need the feature brief, project map, implementation notes, and validation evidence. Testers need the feature brief, project map, validation evidence, and implementation notes. Admin gets the broadest view.
+Developers need the feature brief, project map, handoff intent, and sometimes prior implementation notes. Reviewers need the feature brief, project map, implementation notes, validation evidence, and human review summary. Testers need validation evidence, implementation notes, and the summary. Admin gets the broadest view.
 
-The before-and-after is the main point.
+The before-and-after is the point.
 
 Before layers:
 
@@ -151,15 +316,68 @@ After layers:
 read brief -> read project_map -> read implementation_notes or validation_evidence -> inspect only what matters
 ```
 
-Agents can still inspect the repo. Relay is not trying to prevent real verification. It is trying to avoid making every agent rediscover the same map before doing useful work.
+Agents can still inspect the repo. Relay is not trying to prevent verification. It is trying to avoid making every agent rediscover the same map before doing useful work.
+
+## A Small Token Experiment
+
+We ran a small repeatable experiment with a tiny URL shortener.
+
+Two groups were modeled:
+
+- Raw transcript group: one PM, three developers, one reviewer.
+- Relay group: one PM, three developers, one reviewer.
+
+Both groups built the same app:
+
+- `POST /shorten` creates a short URL;
+- `GET /:slug` redirects and increments click count;
+- `GET /api/:slug` returns metadata and click count;
+- tests cover create, redirect, stats, invalid URL, and missing slug.
+
+The experiment compared the context packet each role would receive. It used this estimator:
+
+```text
+estimated_tokens = ceil(character_count / 4)
+```
+
+This is not exact billable-token proof. Exact model usage depends on the agent harness, model tokenizer, tool results, output length, and retries.
+
+What it does measure is narrower and still useful: how much starting context each role had to receive.
+
+The pilot result:
+
+| Role | Raw transcript est. tokens | Relay brief est. tokens | Saved |
+| --- | ---: | ---: | ---: |
+| PM | 131 | 126 | 5 |
+| Dev 1 | 6990 | 1894 | 5096 |
+| Dev 2 | 6979 | 1871 | 5108 |
+| Dev 3 | 6981 | 1843 | 5138 |
+| Reviewer | 9760 | 5409 | 4351 |
+
+Totals:
+
+| Group | Estimated context tokens |
+| --- | ---: |
+| Raw transcript | 30841 |
+| Relay briefs and layers | 11143 |
+
+Estimated reduction: 19698 tokens, or 63.9%.
+
+The PM savings are small because the PM starts from the same user goal in both groups. The savings appear at handoff time. Developers avoid receiving the full project transcript. Reviewers start from implementation notes and human summaries instead of every event.
+
+Again, this is a context-size proxy, not a billing claim. To prove total savings, we need exact per-agent input tokens, output tokens, tool-result tokens, retries, and outcome quality from the agent harness.
+
+Still, the direction is useful: bounded context can materially reduce what agents need to read at handoff boundaries.
 
 ## Why Not Just Use The Transcript?
 
 The transcript is good for debugging. It is not a durable coordination format.
 
-A transcript mixes discovery, mistakes, dead ends, test output, corrections, and decisions. Asking the next agent to read all of it is asking that agent to spend tokens separating signal from noise.
+A transcript mixes discovery, mistakes, dead ends, shell output, corrections, partial plans, and final decisions. Asking the next agent to read all of it is asking that agent to spend tokens separating signal from noise.
 
-Relay still keeps an append-only event trail. The timeline matters. But the timeline is not the main handoff artifact.
+Relay still keeps an append-only event trail. The timeline matters.
+
+But the timeline is not the main handoff artifact.
 
 The handoff artifact should answer specific questions:
 
@@ -168,24 +386,51 @@ The handoff artifact should answer specific questions:
 - What changed?
 - What was verified?
 - What should the next role do first?
+- What risks remain?
 
-That is what the layers are for.
+That is what layers and summaries are for.
+
+## What We Learned From Using Relay Hard
+
+The first real stress test was not a polished benchmark. It was using Relay as the coordination substrate for a multi-agent coding session.
+
+That surfaced practical issues quickly.
+
+Agents die. A session can hit a rate limit, stall, or disappear mid-card. Relay now has `relay unclaim <id>` so admin can release active work back to `ready` and preserve an audit event.
+
+Approved cards still need edits. A card can be approved and then reveal a typo, unclear acceptance criterion, or wrong role. Relay now lets admin send a `ready` card back to `needs_changes` before it is claimed.
+
+Dependencies need to be first-class. If a UI card depends on a service card, prose is not enough. Relay now supports `--blocked-by`, shows blockers and dependents, rejects dependency cycles, and prevents blocked ready cards from being claimed.
+
+Transitions need to be discoverable. Agents should not learn the workflow by failing commands. Relay now has `relay card transitions <id> --role <role>`.
+
+Human summaries matter. From a human perspective, raw agent language can be hard to review. Relay cannot own the quality of every note an agent writes, but it can require a readable summary at key transitions. That is why moving into review or testing requires a human review summary.
+
+These are small details, but they are the details that make agent coordination feel operational instead of theatrical.
+
+## What Is Proven, And What Is Not
+
+Some parts of Relay are implemented and testable.
+
+The state machine exists. Admin approval exists. The CLI and UI exist. Context layers, layer caps, supersession, briefs, inboxes, dependency gates, unclaim recovery, transition discovery, and context gaps exist.
+
+The token experiment supports a narrower claim: Relay-style bounded context can reduce the amount of starting context supplied to agents during handoffs.
+
+Other claims are still unproven.
+
+We have not proven that teams will consistently write good layers. We have not proven exact billable token savings. We have not proven long-term quality improvement. We have not proven that every agent harness will follow the loop without reinforcement.
+
+Those are open questions, not hidden conclusions.
 
 ## Open Risks And Design Assumptions
 
-Some parts of Relay are proven by implementation. Other parts are still design assumptions that need real usage.
-
-The state machine exists. The admin gate exists. The CLI and UI exist. Context layers, body caps, supersession, briefs, inboxes, and context gaps exist.
-
-What is not yet proven is how well teams and agents will follow the loop over time.
-
 ### Agent compliance is still an open risk
 
-Relay assumes agents will check inboxes, claim work, read briefs, write useful notes, and move cards with handoff intent.
+Relay assumes agents will check inboxes, claim work, read briefs, write useful notes, and move cards through the workflow.
 
-The tool makes that path easy, but it does not prove agents will always do it. That is why the workflow puts important behavior directly in commands. Claiming returns the brief. Moving can create handoff intent. Missing implementation notes and validation evidence show up as gaps.
+The tool makes that path easy, but it cannot prove agents will always follow it. That is why key behavior is attached to commands. Claiming returns the brief. Moving cards can write handoff context. Missing layers show up as gaps.
 
-This is a design hypothesis: if the correct path is the easy path, agents are more likely to follow it.
+The hypothesis is simple: if the correct path is the easy path, agents are more likely to follow it.
 
 ### Context quality is not solved by schema
 
@@ -193,13 +438,15 @@ Relay can require acceptance criteria. It can cap context layers. It can warn wh
 
 It cannot guarantee that a summary is good.
 
-The bet is that typed layers, write-time caps, admin review, and visible gaps will improve context quality enough to make multi-agent work manageable. That still needs real-world validation.
+The bet is that typed layers, write-time caps, admin review, and visible gaps make good summaries more likely. That still needs real usage.
 
 ### Roles are self-declared
 
-Relay is a coordination protocol, not a security boundary. A process with access to the database can claim a role.
+Relay is a coordination protocol, not a security boundary.
 
-That is acceptable for the current local-first model, but it is not the same as authentication or authorization. The control mechanism is admin visibility: approvals, events, inbox items, and context gaps.
+A process with access to the database can claim a role. That is acceptable for the current local-first model, but it is not authentication or authorization.
+
+The current control mechanism is visibility: approvals, event history, inbox items, request tokens for local API mutations, and context gaps.
 
 ### Staleness needs usage data
 
@@ -213,11 +460,15 @@ For now, Relay makes age visible and lets usage reveal where policy is needed.
 
 Relay starts local-first. A shared SQLite database is enough for one machine and multiple agent sessions.
 
-That keeps the system simple and inspectable. It also means Relay is not yet a remote multi-tenant service. The HTTP API is the future seam if remote agents or richer storage become necessary.
+That keeps the system simple and inspectable. It also means Relay is not yet a remote multi-tenant service. The HTTP API is the obvious boundary if remote agents or richer storage become necessary.
 
 ## What Relay Is Not
 
-Relay is not Jira for agents.
+Relay is not a replacement for engineers.
+
+It is not a security product.
+
+It is not a full project management suite.
 
 It does not try to solve capacity planning, long-horizon reporting, complex permissions, or every flavor of agile process.
 
@@ -227,10 +478,11 @@ The first useful version needs to answer a smaller set of questions:
 - Who proposed it?
 - Did a human approve it?
 - Who is working on it?
+- What is blocked?
 - What context should the next agent read?
-- What evidence exists before we call it done?
+- What evidence exists before we call this done?
 
-If Relay answers those questions clearly, it earns its place.
+If Relay answers those clearly, it earns its place.
 
 ## The Principle
 
@@ -238,8 +490,14 @@ The principle behind Relay is simple:
 
 **Human control should be visible, and agent context should be bounded.**
 
-The human-readable side gives the admin a board, inbox, approvals, timelines, agents, and gaps. The agent-readable side gives agents JSON commands, briefs, inboxes, and context layers. Both sides share the same state machine and event trail.
+The human-readable side gives the admin a board, inbox, approvals, timelines, agents, dependencies, and gaps.
 
-Relay is not a smarter agent. It is the operational layer around agents: a way to approve work, hand it off, review it, test it, and finish it without every session starting from zero.
+The agent-readable side gives agents JSON commands, briefs, inboxes, transition discovery, and context layers.
 
-As agent work becomes more continuous, this layer starts to matter. Speed without coordination creates noise. Relay is an attempt to turn agent speed into a workflow a human can actually supervise.
+Both sides share the same state machine and event trail.
+
+Relay is not a smarter agent. It is the operational layer around agents: a way to approve work, hand it off, review it, test it, recover it when agents die, and finish it without every session starting from zero.
+
+As agent work becomes more continuous, this layer starts to matter.
+
+Speed without coordination creates noise. Relay is an attempt to turn agent speed into a workflow a human can actually supervise.
