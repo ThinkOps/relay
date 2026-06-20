@@ -63,13 +63,35 @@ Agents use a CLI. They can create cards, submit cards, claim work, read briefs, 
 
 Humans use a local web UI. They can review pending work, approve or reject cards, inspect timelines, see assigned agents, read context, spot blocked cards, and find cards that are missing handoff information.
 
-Under the hood, Relay is intentionally small: Node.js, built-in SQLite, a plain HTTP server, and static HTML/CSS/JS. The current version has no runtime npm dependencies.
+Under the hood, Relay is intentionally small: Node.js, built-in SQLite, a plain HTTP server, and static HTML/CSS/JS. The current version has no runtime npm dependencies. That is not just a fun fact; it is a constraint worth protecting because it keeps the local tool inspectable and reduces supply-chain surface area.
 
 The core workflow is:
 
 ```text
 draft -> pending_approval -> ready -> in_progress -> review -> testing -> done
 ```
+
+The real graph is not only that straight line. The important transitions are:
+
+| From | To | Who | Why |
+| --- | --- | --- | --- |
+| `draft` | `pending_approval` | PM or admin | Submit scoped work for approval |
+| `needs_changes` | `pending_approval` | PM or admin | Revise and resubmit |
+| `pending_approval` | `ready` | admin | Approve execution |
+| `pending_approval` | `needs_changes` | admin | Ask PM to revise scope |
+| `pending_approval` | `rejected` | admin | Reject work permanently |
+| `ready` | `in_progress` | expected role | Claim approved work |
+| `ready` | `needs_changes` | admin | Amend approved but unclaimed work |
+| `in_progress` | `review` | developer | Hand off implementation for code review |
+| `review` | `in_progress` | reviewer | Send findings back to development |
+| `review` | `testing` | reviewer | Hand off reviewed work to QA |
+| `testing` | `in_progress` | tester | Send failed QA back to development |
+| `testing` | `done` | admin | Accept validated work |
+| active work | `ready` | admin | Unclaim abandoned work |
+| active work | `paused` | admin | Hold work without deleting history |
+| active work | `cancelled` | admin | Stop work without deleting history |
+
+`done`, `rejected`, and `cancelled` are terminal states. Relay keeps them because deleting dead work would destroy the audit trail.
 
 At a high level, Relay separates human control from agent execution:
 
@@ -96,6 +118,7 @@ Relay also supports operational recovery:
 - admin can send approved but unclaimed work back for changes;
 - cards can declare dependencies with `--blocked-by`;
 - blocked ready cards cannot be claimed until blockers are done;
+- claim uses an atomic ready-card transition, so two agents cannot both claim the same card;
 - agents can ask `relay card transitions <id> --role <role>` instead of learning the workflow by failed commands.
 
 The product is small, but the boundaries are deliberate.
@@ -278,11 +301,11 @@ Each layer type has a character cap. For example, `feature_brief` and `project_m
 
 These are not exact token limits. Different models tokenize text differently.
 
-But character caps still force the right behavior: agents must summarize. A layer cannot quietly become a dumped transcript.
+Character caps prevent the worst failure mode: unbounded transcript dumps. They do not guarantee quality. An agent can still write 3000 characters of vague prose. That is why caps are paired with typed layer names, admin review, visible gaps, and human summaries.
 
 Layers are immutable. If a layer needs to change, a new layer supersedes the old one. The latest active layer is cheap to read, and the older version remains available for audit.
 
-The important design choice is that Relay does not truncate at read time. Truncation hides information unpredictably. Relay enforces size at write time, while the author still has context and can produce a deliberate summary.
+The important design choice is that Relay does not truncate at read time. Truncation hides information unpredictably. Relay enforces size at write time, while the author still has enough context to produce a deliberate summary.
 
 ## Briefs: The Bounded Read Path
 
@@ -402,6 +425,8 @@ Approved cards still need edits. A card can be approved and then reveal a typo, 
 
 Dependencies need to be first-class. If a UI card depends on a service card, prose is not enough. Relay now supports `--blocked-by`, shows blockers and dependents, rejects dependency cycles, and prevents blocked ready cards from being claimed.
 
+Claim needs to be atomic. Two agents can see the same ready card at nearly the same time. Relay now uses a conditional ready-card update so only one claimant wins and stale claim attempts cannot overwrite ownership.
+
 Transitions need to be discoverable. Agents should not learn the workflow by failing commands. Relay now has `relay card transitions <id> --role <role>`.
 
 Human summaries matter. From a human perspective, raw agent language can be hard to review. Relay cannot own the quality of every note an agent writes, but it can require a readable summary at key transitions. That is why moving into review or testing requires a human review summary.
@@ -412,7 +437,7 @@ These are small details, but they are the details that make agent coordination f
 
 Some parts of Relay are implemented and testable.
 
-The state machine exists. Admin approval exists. The CLI and UI exist. Context layers, layer caps, supersession, briefs, inboxes, dependency gates, unclaim recovery, transition discovery, and context gaps exist.
+The state machine exists. Admin approval exists. The CLI and UI exist. Context layers, layer caps, supersession, briefs, inboxes, atomic claim, dependency gates, terminal states, unclaim recovery, transition discovery, safe Markdown rendering, and context gaps exist.
 
 The token experiment supports a narrower claim: Relay-style bounded context can reduce the amount of starting context supplied to agents during handoffs.
 
@@ -447,6 +472,14 @@ Relay is a coordination protocol, not a security boundary.
 A process with access to the database can claim a role. That is acceptable for the current local-first model, but it is not authentication or authorization.
 
 The current control mechanism is visibility: approvals, event history, inbox items, request tokens for local API mutations, and context gaps.
+
+The HTTP API is the natural future boundary for remote agents. Crossing from local-first to remote changes the threat model. Before that ships, Relay needs real authentication and authorization. The self-declared-role model should be treated as a local coordination shortcut, not as something safe to expose over a network.
+
+### Agent-authored Markdown is untrusted
+
+Relay renders agent-authored Markdown in the admin UI. That is useful, but it is also the obvious stored-XSS risk: an agent or compromised input could try to write a script payload into notes or context.
+
+The UI should treat all Markdown as untrusted. The current renderer builds DOM nodes and text nodes for a small safe subset instead of injecting raw HTML. That constraint needs to remain in place if the renderer grows.
 
 ### Staleness needs usage data
 

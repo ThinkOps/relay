@@ -406,6 +406,36 @@ main {
   font-weight: 500;
 }
 
+body[data-screenshot="board"] main {
+  gap: 18px;
+  padding: 22px 28px 28px;
+}
+
+body[data-screenshot="board"] .board {
+  gap: 18px;
+  grid-auto-columns: minmax(220px, 1fr);
+}
+
+body[data-screenshot="board"] .column {
+  min-width: 220px;
+  padding: 14px;
+}
+
+body[data-screenshot="board"] .card {
+  gap: 7px;
+  min-height: 0;
+  padding: 12px;
+}
+
+body[data-screenshot="board"] .card-signal {
+  padding: 8px;
+}
+
+body[data-screenshot="board"] .card-signal p {
+  -webkit-line-clamp: 2;
+  max-height: 38px;
+}
+
 .column.over-limit h3 span {
   color: var(--warn);
 }

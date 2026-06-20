@@ -91,8 +91,10 @@ function render(board) {
   const activePoints = active.reduce((total, card) => total + (card.storyPoints || 0), 0);
   const onlineCount = state.navigation?.onlineAgents?.length || 0;
   const view = currentFilter().view;
+  const screenshot = currentFilter().screenshot;
   const agentsMode = view === "agents";
   const inboxMode = view === "inbox";
+  const boardScreenshotMode = screenshot === "board";
 
   document.getElementById("summary").textContent = summaryText({
     active,
@@ -110,9 +112,10 @@ function render(board) {
 
   document.getElementById("agentsView").hidden = !agentsMode;
   document.getElementById("inboxView").hidden = !inboxMode;
-  document.getElementById("approvalSection").hidden = agentsMode || inboxMode;
-  document.getElementById("activeSection").hidden = agentsMode || inboxMode;
+  document.getElementById("approvalSection").hidden = agentsMode || inboxMode || boardScreenshotMode;
+  document.getElementById("activeSection").hidden = agentsMode || inboxMode || boardScreenshotMode;
   document.getElementById("boardSection").hidden = agentsMode || inboxMode;
+  document.body.dataset.screenshot = screenshot || "";
 
   if (agentsMode) {
     renderAgentsView(state.agents);
@@ -227,9 +230,11 @@ function renderActiveWork(cards) {
 function renderBoard(board) {
   const root = document.getElementById("board");
   root.replaceChildren();
+  const boardScreenshotMode = currentFilter().screenshot === "board";
 
   for (const status of STATUSES) {
     const cards = board[status] || [];
+    if (boardScreenshotMode && cards.length === 0) continue;
     const column = el("section", "column");
     column.dataset.status = status;
     const heading = el("h3");
@@ -1315,6 +1320,7 @@ function currentFilter() {
     card: params.get("card"),
     feature: params.get("feature"),
     project: params.get("project"),
+    screenshot: params.get("screenshot"),
     view: params.get("view"),
   };
 }

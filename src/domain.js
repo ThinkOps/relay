@@ -232,12 +232,12 @@ function createRelay({ dbPath, cwd = process.cwd() }) {
       throw new Error(`Card expects ${card.expectedRole}, not ${claimingRole}.`);
     }
 
-    const updated = store.updateCardState(card.id, {
-      status: "in_progress",
+    const updated = store.claimReadyCard(card.id, {
       approvalStatus: card.approvalStatus,
       assignedRole: claimingRole,
       assignedAgent: requiredText(input.agent || input.actor, "Agent"),
     });
+    if (!updated) throw new Error(`Card #${card.id} was already claimed or is no longer ready.`);
 
     heartbeat({ agent: updated.assignedAgent, role: updated.assignedRole });
     event(updated.id, input, "card.claimed", `${updated.assignedAgent} claimed as ${claimingRole}`);

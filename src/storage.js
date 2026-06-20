@@ -828,6 +828,25 @@ function createStore(dbPath) {
     return getCardById(id);
   }
 
+  function claimReadyCard(id, input) {
+    const updatedAt = now();
+    const result = db.prepare(`
+      UPDATE cards
+      SET
+        status = 'in_progress',
+        approval_status = ?,
+        assigned_role = ?,
+        assigned_agent = ?,
+        updated_at = ?
+      WHERE id = ?
+        AND status = 'ready'
+        AND assigned_agent = ''
+    `).run(input.approvalStatus, input.assignedRole, input.assignedAgent, updatedAt, id);
+
+    if (result.changes === 0) return null;
+    return getCardById(id);
+  }
+
   function updateCardLinks(id, input) {
     const updatedAt = now();
     db.prepare(`
@@ -1272,6 +1291,7 @@ function createStore(dbPath) {
     addEvent,
     addNotification,
     acknowledgeNotification,
+    claimReadyCard,
     close,
     createCard,
     createContextLayer,

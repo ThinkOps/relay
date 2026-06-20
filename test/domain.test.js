@@ -5,6 +5,7 @@ const path = require("node:path");
 const { DatabaseSync } = require("node:sqlite");
 const test = require("node:test");
 const { createRelay } = require("../src/domain");
+const { createStore } = require("../src/storage");
 
 function tempDb() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "relay-test-"));
@@ -66,6 +67,52 @@ test("admin approval gates card execution", () => {
   assert.equal(app.listOnlineAgents()[0].agent, "dev-agent");
 
   app.close();
+});
+
+test("claim persistence uses an atomic ready-card transition", () => {
+  const dbPath = tempDb();
+  const app = createRelay({ dbPath, cwd: process.cwd() });
+  app.createFeature({
+    name: "Login Revamp",
+    summary: "Improve login flows",
+    actor: "pm-agent",
+    role: "pm",
+  });
+  app.createProject({ feature: "Login Revamp", name: "Mobile App", actor: "admin", role: "admin" });
+  const card = app.createCard({
+    project: "Mobile App",
+    feature: "Login Revamp",
+    title: "Claim exactly once",
+    problemStatement: "Two agents can race to claim the same ready card.",
+    acceptanceCriteria: "Only one conditional claim update succeeds",
+    definitionOfDone: "The stored owner cannot be overwritten by a stale claimant.",
+    targetRepo: "git@example.com:mobile/app.git",
+    expectedRole: "developer",
+    riskLevel: "medium",
+    actor: "pm-agent",
+    role: "pm",
+  });
+  app.submitCard(card.id, { actor: "pm-agent", role: "pm" });
+  app.approveCard(card.id, { actor: "aditya", role: "admin" });
+  app.close();
+
+  const store = createStore(dbPath);
+  const first = store.claimReadyCard(card.id, {
+    approvalStatus: "approved",
+    assignedRole: "developer",
+    assignedAgent: "dev-one",
+  });
+  const second = store.claimReadyCard(card.id, {
+    approvalStatus: "approved",
+    assignedRole: "developer",
+    assignedAgent: "dev-two",
+  });
+  const stored = store.getCardById(card.id);
+
+  assert.equal(first.assignedAgent, "dev-one");
+  assert.equal(second, null);
+  assert.equal(stored.assignedAgent, "dev-one");
+  store.close();
 });
 
 test("admin can request changes with an event trail", () => {
