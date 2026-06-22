@@ -1,5 +1,17 @@
 # Relay
 
+<p align="center">
+  <img width="128" height="128" alt="Relay logo" src="assets/relay-logo.png" />
+</p>
+
+<p align="center">
+  <a href="https://thinkops.github.io/relay/">Landing site</a>
+  ·
+  <a href="docs/agent-loop.md">Agent loop</a>
+  ·
+  <a href="https://github.com/ThinkOps/relay/issues">Issues</a>
+</p>
+
 <img width="1511" height="825" alt="Screenshot 2026-06-20 at 11 58 54 AM" src="https://github.com/user-attachments/assets/a5f42cf2-e44c-4a66-b0e7-274d768a0ee3" />
 
 

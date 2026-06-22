@@ -1,0 +1,20 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">Relay clean approval loop logo option</title>
+  <desc id="desc">A clean square logo mark for Relay, combining a subtle kanban board, a relay path shaped like an R, and a small approval badge.</desc>
+  <rect width="512" height="512" rx="112" fill="#0F172A"/>
+
+  <rect x="112" y="104" width="288" height="304" rx="42" fill="#122033"/>
+  <rect x="140" y="138" width="56" height="236" rx="22" fill="#2A3A52"/>
+  <rect x="228" y="138" width="56" height="236" rx="22" fill="#2A3A52"/>
+  <rect x="316" y="138" width="56" height="236" rx="22" fill="#2A3A52"/>
+
+  <path d="M165 184C211 139 295 141 336 183C377 225 343 272 279 272H165" stroke="#2DD4BF" stroke-width="28" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M230 272C287 298 325 337 348 384" stroke="#2DD4BF" stroke-width="28" stroke-linecap="round"/>
+
+  <circle cx="165" cy="184" r="25" fill="#2DD4BF"/>
+  <circle cx="165" cy="272" r="25" fill="#2DD4BF"/>
+  <circle cx="348" cy="384" r="25" fill="#2DD4BF"/>
+
+  <rect x="306" y="150" width="66" height="66" rx="22" fill="#FBBF24"/>
+  <path d="M323 183L337 197L356 170" stroke="#0F172A" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

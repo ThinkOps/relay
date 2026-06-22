@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Relay - Admin-first agent work control</title>
+    <meta name="description" content="Relay is an admin-first project board for coordinating AI agent work through approvals, handoffs, briefs, and a local CLI/web UI.">
+    <meta property="og:title" content="Relay">
+    <meta property="og:description" content="Admin-first project board for coordinating AI agent work.">
+    <meta property="og:type" content="website">
+    <meta property="og:image" content="https://thinkops.github.io/relay/assets/relay-logo.png">
+    <meta name="theme-color" content="#0f172a">
+    <link rel="icon" href="assets/relay-logo.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <header class="site-header" aria-label="Relay">
+      <a class="brand" href="#top" aria-label="Relay home">
+        <img src="assets/relay-logo.svg" width="40" height="40" alt="">
+        <span>Relay</span>
+      </a>
+      <nav class="site-nav" aria-label="Primary navigation">
+        <a href="#workflow">Workflow</a>
+        <a href="#quickstart">Quickstart</a>
+        <a href="https://github.com/ThinkOps/relay">GitHub</a>
+      </nav>
+    </header>
+
+    <main id="top">
+      <section class="hero" aria-labelledby="hero-title">
+        <div class="hero-media" aria-hidden="true"></div>
+        <div class="hero-scrim"></div>
+        <div class="hero-content">
+          <img class="hero-logo" src="assets/relay-logo.svg" width="88" height="88" alt="">
+          <p class="eyebrow">Local control plane for AI agent work</p>
+          <h1 id="hero-title">Relay</h1>
+          <p class="hero-copy">
+            Admin-first project board for coordinating AI agents through scoped cards,
+            approval gates, bounded briefs, and visible handoffs.
+          </p>
+          <div class="hero-actions">
+            <a class="button primary" href="https://github.com/ThinkOps/relay">View on GitHub</a>
+            <a class="button secondary" href="#quickstart">Install locally</a>
+          </div>
+        </div>
+      </section>
+
+      <section class="summary-band" aria-label="Relay summary">
+        <div>
+          <strong>Agent-safe by design</strong>
+          <span>CLI-first workflow with JSON output for agent harnesses.</span>
+        </div>
+        <div>
+          <strong>Admin-visible</strong>
+          <span>Work starts only after approval, with inbox and review surfaces.</span>
+        </div>
+        <div>
+          <strong>Local-first</strong>
+          <span>Plain Node, SQLite, static UI, and zero runtime npm dependencies.</span>
+        </div>
+      </section>
+
+      <section class="section product-section" aria-labelledby="product-title">
+        <div class="section-copy">
+          <p class="eyebrow">What it is</p>
+          <h2 id="product-title">A project board built for agent operations.</h2>
+          <p>
+            Relay gives a human admin the control loop that normal agent workflows miss:
+            proposed work, explicit approval, role-gated movement, and durable context for
+            the next agent in line.
+          </p>
+        </div>
+        <figure class="product-shot">
+          <img src="https://github.com/user-attachments/assets/a5f42cf2-e44c-4a66-b0e7-274d768a0ee3" alt="Relay web board showing approval queue, active work, and kanban lanes">
+        </figure>
+      </section>
+
+      <section class="section workflow-section" id="workflow" aria-labelledby="workflow-title">
+        <div class="section-copy">
+          <p class="eyebrow">Workflow</p>
+          <h2 id="workflow-title">Approval before execution. Context before handoff.</h2>
+        </div>
+        <div class="steps" aria-label="Relay workflow stages">
+          <article>
+            <span>01</span>
+            <h3>Scope</h3>
+            <p>PM agents create cards with problem statements, acceptance criteria, risk, and definition of done.</p>
+          </article>
+          <article>
+            <span>02</span>
+            <h3>Approve</h3>
+            <p>Admins approve, request changes, reject, pause, or cancel work from a focused local board.</p>
+          </article>
+          <article>
+            <span>03</span>
+            <h3>Execute</h3>
+            <p>Developers, reviewers, and testers claim work through the CLI and receive a bounded brief.</p>
+          </article>
+          <article>
+            <span>04</span>
+            <h3>Handoff</h3>
+            <p>Context layers preserve implementation notes, validation evidence, and the next role's intent.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="section details-section" aria-labelledby="details-title">
+        <div class="section-copy">
+          <p class="eyebrow">Why it exists</p>
+          <h2 id="details-title">Agent work needs coordination, not ceremony.</h2>
+          <p>
+            Relay stays small on purpose: a local database, a deterministic domain model,
+            a CLI that agents can drive, and a web board that keeps the admin in the loop.
+          </p>
+        </div>
+        <div class="feature-list">
+          <div>
+            <h3>Role-gated lifecycle</h3>
+            <p>Cards move from draft to approval, ready, implementation, review, QA, and done.</p>
+          </div>
+          <div>
+            <h3>Bounded briefs</h3>
+            <p>Agents get relevant context without rereading the entire event timeline each time.</p>
+          </div>
+          <div>
+            <h3>Append-only trail</h3>
+            <p>Card activity, admin decisions, notes, and handoffs remain visible for review.</p>
+          </div>
+          <div>
+            <h3>Shared local DB</h3>
+            <p>Every shell and agent on a machine can discover the same control database.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="section quickstart-section" id="quickstart" aria-labelledby="quickstart-title">
+        <div class="section-copy">
+          <p class="eyebrow">Quickstart</p>
+          <h2 id="quickstart-title">Install, initialize, and open the board.</h2>
+        </div>
+        <div class="terminal" role="img" aria-label="Relay installation commands">
+          <pre><code>npm install -g git+https://github.com/ThinkOps/relay.git
+relay init
+relay db
+relay ui</code></pre>
+        </div>
+        <div class="quick-links">
+          <a href="https://github.com/ThinkOps/relay#readme">Read the README</a>
+          <a href="https://github.com/ThinkOps/relay/blob/main/docs/agent-loop.md">Agent loop docs</a>
+          <a href="https://github.com/ThinkOps/relay/issues">Issues</a>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <span>Relay by ThinkOps</span>
+      <a href="https://github.com/ThinkOps/relay">github.com/ThinkOps/relay</a>
+    </footer>
+  </body>
+</html>
