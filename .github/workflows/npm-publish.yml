@@ -5,6 +5,15 @@ on:
     types:
       - published
   workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Run tests and package audit without publishing"
+        required: true
+        default: "true"
+        type: choice
+        options:
+          - "true"
+          - "false"
 
 permissions:
   contents: read
@@ -50,4 +59,9 @@ jobs:
         run: npm pack --dry-run
 
       - name: Publish
+        if: github.event_name == 'release' || github.event.inputs.dry_run == 'false'
         run: npm publish --access public
+
+      - name: Skip publish
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.dry_run != 'false'
+        run: echo "Dry run complete; npm publish was skipped."
