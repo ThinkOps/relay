@@ -1,5 +1,9 @@
 # Relay
 
+<img width="1511" height="825" alt="Screenshot 2026-06-20 at 11 58 54 AM" src="https://github.com/user-attachments/assets/a5f42cf2-e44c-4a66-b0e7-274d768a0ee3" />
+
+
+
 Relay is an admin-first project board for managing agent work. PM agents can propose scoped work, but execution starts only after admin approval.
 
 The first version is intentionally small:
