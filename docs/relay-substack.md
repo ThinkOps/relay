@@ -449,51 +449,17 @@ Those are open questions, not hidden conclusions.
 
 ## Open Risks And Design Assumptions
 
-### Agent compliance is still an open risk
+- **Agent compliance is still an assumption.** Relay makes the correct path easy: claiming returns the brief, moves can write handoff context, and missing layers show up as gaps. But the tool cannot prove agents will always check inboxes, read briefs, or write useful notes.
 
-Relay assumes agents will check inboxes, claim work, read briefs, write useful notes, and move cards through the workflow.
+- **Schema does not guarantee quality.** Acceptance criteria, layer caps, lint warnings, and context gaps prevent some bad behavior. They do not guarantee a good summary. The bet is that typed layers plus admin review make good summaries more likely.
 
-The tool makes that path easy, but it cannot prove agents will always follow it. That is why key behavior is attached to commands. Claiming returns the brief. Moving cards can write handoff context. Missing layers show up as gaps.
+- **Roles are self-declared.** Relay is a coordination protocol, not a security boundary. Local self-declared roles are acceptable for a shared SQLite workflow, but remote agents would require real authentication and authorization before the HTTP API is exposed.
 
-The hypothesis is simple: if the correct path is the easy path, agents are more likely to follow it.
+- **Agent-authored Markdown is untrusted.** Notes and context are rendered in the admin UI, so stored XSS is a real concern. The current renderer builds a small safe DOM/text-node subset instead of injecting raw HTML; that constraint needs to hold as the renderer grows.
 
-### Context quality is not solved by schema
+- **Context can go stale.** A `project_map` or `feature_brief` can become wrong after a refactor. Relay tracks age and supersession, but real usage should determine the staleness policy.
 
-Relay can require acceptance criteria. It can cap context layers. It can warn when a card is too large. It can show when handoff layers are missing.
-
-It cannot guarantee that a summary is good.
-
-The bet is that typed layers, write-time caps, admin review, and visible gaps make good summaries more likely. That still needs real usage.
-
-### Roles are self-declared
-
-Relay is a coordination protocol, not a security boundary.
-
-A process with access to the database can claim a role. That is acceptable for the current local-first model, but it is not authentication or authorization.
-
-The current control mechanism is visibility: approvals, event history, inbox items, request tokens for local API mutations, and context gaps.
-
-The HTTP API is the natural future boundary for remote agents. Crossing from local-first to remote changes the threat model. Before that ships, Relay needs real authentication and authorization. The self-declared-role model should be treated as a local coordination shortcut, not as something safe to expose over a network.
-
-### Agent-authored Markdown is untrusted
-
-Relay renders agent-authored Markdown in the admin UI. That is useful, but it is also the obvious stored-XSS risk: an agent or compromised input could try to write a script payload into notes or context.
-
-The UI should treat all Markdown as untrusted. The current renderer builds DOM nodes and text nodes for a small safe subset instead of injecting raw HTML. That constraint needs to remain in place if the renderer grows.
-
-### Staleness needs usage data
-
-A `project_map` can become stale. So can a `feature_brief`.
-
-Relay tracks age and supersession, but it does not define a universal staleness rule yet. A map that is 30 days old might be fine in one repo and wrong after a one-day refactor in another.
-
-For now, Relay makes age visible and lets usage reveal where policy is needed.
-
-### SQLite is a first boundary
-
-Relay starts local-first. A shared SQLite database is enough for one machine and multiple agent sessions.
-
-That keeps the system simple and inspectable. It also means Relay is not yet a remote multi-tenant service. The HTTP API is the obvious boundary if remote agents or richer storage become necessary.
+- **SQLite is the first boundary.** A shared local database keeps Relay simple and inspectable. It is not yet a remote multi-tenant service. The HTTP API is the obvious future boundary if richer storage or remote execution becomes necessary.
 
 ## What Relay Is Not
 
