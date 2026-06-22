@@ -4,7 +4,7 @@
   "description": "Admin-first project board for managing agent work.",
   "type": "commonjs",
   "bin": {
-    "relay": "./bin/relay.js"
+    "relay": "bin/relay.js"
   },
   "files": [
     "bin",
