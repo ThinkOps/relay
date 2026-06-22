@@ -1,7 +1,7 @@
 # Relay
 
 <p align="center">
-  <img width="128" height="128" alt="Relay logo" src="assets/relay-logo.png" />
+  <img width="128" height="128" alt="Relay logo" src="https://thinkops.github.io/relay/assets/relay-logo.png" />
 </p>
 
 <p align="center">
